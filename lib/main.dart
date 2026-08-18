@@ -233,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: Column(
               children: [
                 Text(
-                  '2026 - Made by Hemerjit',
+                  '${DateTime.now().year} - Developed by Hemerjit - $_version',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 12,
@@ -241,6 +241,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                   textAlign: TextAlign.center,
                 ),
+
                 const SizedBox(height: 4),
                 Text(
                   'Calculations are estimates for informational purposes only. Actual charges may vary depending on the broker, exchange, transaction type and applicable fees.',

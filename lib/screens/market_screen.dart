@@ -49,7 +49,10 @@ class _MarketScreenState extends State<MarketScreen> {
   bool get _hasResults => _buy != null || _sell != null;
 
   void _calculate() {
+    // Dismiss the keyboard when Calculate or any quick button is pressed.
+    FocusManager.instance.primaryFocus?.unfocus();
     double qty = double.tryParse(_qtyCtrl.text) ?? 0;
+
     double buy = double.tryParse(_buyCtrl.text) ?? 0;
     double sell = double.tryParse(_sellCtrl.text) ?? 0;
     double buyRate = double.tryParse(_buyRateCtrl.text) ?? 0;
@@ -96,7 +99,10 @@ class _MarketScreenState extends State<MarketScreen> {
   }
 
   void _clear() {
+    // Dismiss the keyboard when Clear is pressed.
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
+
       _qtyCtrl.clear();
       _buyCtrl.clear();
       _sellCtrl.clear();
