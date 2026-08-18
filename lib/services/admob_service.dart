@@ -20,7 +20,8 @@ class AdMobService {
   static const String bannerAdUnitIdAndroid =
       'ca-app-pub-7952779601826703/9359002306';
   static const String bannerAdUnitIdIos =
-      'ca-app-pub-7952779601826703/9359002306';
+      'ca-app-pub-7952779601826703/3879508552';
+
 
 
   /// Your AdMob App ID (from the AdMob console "App settings" page).
