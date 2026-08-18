@@ -1,0 +1,29 @@
+name: flutter_mmcal
+description: Multi Market Calculator - Stock trading cost calculator for 11 markets.
+publish_to: 'none'
+version: 1.0.3+4
+
+
+
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.2.3
+  intl: ^0.19.0
+  cupertino_icons: ^1.0.8
+  package_info_plus: ^8.0.0
+  http: ^1.2.0
+  url_launcher: ^6.2.5
+  google_mobile_ads: ^9.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
