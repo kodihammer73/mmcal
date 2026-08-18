@@ -1,7 +1,7 @@
 import '../engine/engine.dart';
-import '../config/settings.dart';
 
 class HongKongMarket extends ForeignMarket {
+
   @override String get name => 'Hong Kong';
   @override String get currency => 'HKD';
   @override bool get supportsOnline => true;
@@ -33,7 +33,8 @@ class HongKongMarket extends ForeignMarket {
   @override String get ibrmFormula => 'hk';
   @override double get minIbFee => 0;
 
-  HongKongMarket(SettingsManager s) : super(s);
+  HongKongMarket(super.s);
+
 
   @override
   (double, double) determineRates(int mode, int buysel, double qty, double price, double rate) {

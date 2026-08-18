@@ -1,5 +1,5 @@
 import '../engine/engine.dart';
-import '../config/settings.dart';
+
 
 class UnitedStatesMarket extends ForeignMarket {
   @override String get name => 'United States (US)';
@@ -33,7 +33,8 @@ class UnitedStatesMarket extends ForeignMarket {
   @override String get ibrmFormula => 'us_th_uk';
   @override double get minIbFee => 0;
 
-  UnitedStatesMarket(SettingsManager s) : super(s);
+  UnitedStatesMarket(super.s);
+
 
   @override
   double getClearingRate(int mode, int buysel) {

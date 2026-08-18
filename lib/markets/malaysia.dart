@@ -1,5 +1,5 @@
 import '../engine/engine.dart';
-import '../config/settings.dart';
+
 
 class MalaysiaMarket extends Market {
   @override String get name => 'Malaysia';
@@ -9,7 +9,8 @@ class MalaysiaMarket extends Market {
   @override bool get flagMinRm12 => true;
   @override bool get flagNoSduty => true;
 
-  MalaysiaMarket(SettingsManager s) : super(s);
+  MalaysiaMarket(super.s);
+
 
   @override
   CalcResult calculate({
@@ -28,13 +29,22 @@ class MalaysiaMarket extends Market {
 
     // Map to Liberty BASIC lb_flag
     int lbFlag = 0;
-    if (flagSpecial && flagMinRm12 && flagNoSduty) lbFlag = 9;
-    else if (flagSpecial && flagMinRm12) lbFlag = 3;
-    else if (flagSpecial && flagNoSduty) lbFlag = 7;
-    else if (flagSpecial) lbFlag = 2;
-    else if (flagMinRm12 && flagNoSduty) lbFlag = 10;
-    else if (flagMinRm12) lbFlag = 1;
-    else if (flagNoSduty) lbFlag = 8;
+    if (flagSpecial && flagMinRm12 && flagNoSduty) {
+      lbFlag = 9;
+    } else if (flagSpecial && flagMinRm12) {
+      lbFlag = 3;
+    } else if (flagSpecial && flagNoSduty) {
+      lbFlag = 7;
+    } else if (flagSpecial) {
+      lbFlag = 2;
+    } else if (flagMinRm12 && flagNoSduty) {
+      lbFlag = 10;
+    } else if (flagMinRm12) {
+      lbFlag = 1;
+    } else if (flagNoSduty) {
+      lbFlag = 8;
+    }
+
 
     double brkamtrate;
     double brokerage;

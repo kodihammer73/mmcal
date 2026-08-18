@@ -1,5 +1,5 @@
 import '../engine/engine.dart';
-import '../config/settings.dart';
+
 
 class SingaporeMarket extends ForeignMarket {
   @override String get name => 'Singapore';
@@ -33,7 +33,8 @@ class SingaporeMarket extends ForeignMarket {
   @override String get ibrmFormula => 'sg';
   @override double get minIbFee => 0;
 
-  SingaporeMarket(SettingsManager s) : super(s);
+  SingaporeMarket(super.s);
+
 
   @override
   (double, double) determineRates(int mode, int buysel, double qty, double price, double rate) {

@@ -153,7 +153,8 @@ class _MarketScreenState extends State<MarketScreen> {
                   Expanded(
                     child: TextField(
                       controller: _brkrateCtrl,
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+
                       decoration: const InputDecoration(
                         labelText: 'Special Brk Rate (%)',
                         border: OutlineInputBorder(),
@@ -173,17 +174,19 @@ class _MarketScreenState extends State<MarketScreen> {
                 const SizedBox(height: 8),
                 // Row 2: Buy / Sell price
                 Row(children: [
-                  Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', TextInputType.numberWithOptions(decimal: true))),
+                  Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
                   const SizedBox(width: 8),
-                  Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', TextInputType.numberWithOptions(decimal: true))),
+                  Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
+
                 ]),
                 const SizedBox(height: 8),
                 // Row 3: Buy / Sell rate (foreign only)
                 if (isForeign) ...[
                   Row(children: [
-                    Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', TextInputType.numberWithOptions(decimal: true))),
+                    Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
                     const SizedBox(width: 8),
-                    Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', TextInputType.numberWithOptions(decimal: true))),
+                    Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
+
                   ]),
                   const SizedBox(height: 8),
                 ],
@@ -506,7 +509,8 @@ class _MarketScreenState extends State<MarketScreen> {
         children: [
           const Expanded(flex: 3, child: Text('Item', style: TextStyle(fontWeight: FontWeight.bold))),
           const Expanded(flex: 1, child: Text('Curr', style: TextStyle(fontWeight: FontWeight.bold))),
-          Expanded(flex: 2, child: Text('Rate', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+          const Expanded(flex: 2, child: Text('Rate', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+
           Expanded(flex: 3, child: Text('BUY', style: TextStyle(fontWeight: FontWeight.bold, color: buyColor), textAlign: TextAlign.right)),
           Expanded(flex: 3, child: Text('SELL', style: TextStyle(fontWeight: FontWeight.bold, color: sellColor), textAlign: TextAlign.right)),
         ],

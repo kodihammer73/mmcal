@@ -1,5 +1,5 @@
 import '../engine/engine.dart';
-import '../config/settings.dart';
+
 
 // ============================================================
 // Simple foreign markets with local+foreign+combined minimums
@@ -66,7 +66,8 @@ class ThailandMarket extends _SimpleMarket {
   @override String get maxOffBrkKey => 'thaoffmaxrmbrkrate';
   @override double get minIbFee => 0;
 
-  ThailandMarket(SettingsManager s) : super(s);
+  ThailandMarket(super.s);
+
 }
 
 // ============================================================
@@ -88,7 +89,8 @@ class IndonesiaMarket extends _SimpleMarket {
   @override String get maxOffBrkKey => 'indoffmaxrmbrkrate';
   @override double get minIbFee => 0;
 
-  IndonesiaMarket(SettingsManager s) : super(s);
+  IndonesiaMarket(super.s);
+
 }
 
 // ============================================================
@@ -110,7 +112,8 @@ class UnitedKingdomMarket extends _SimpleMarket {
   @override String get maxOffBrkKey => 'ukdoffmaxrmbrkrate';
   @override double get minIbFee => 20;
 
-  UnitedKingdomMarket(SettingsManager s) : super(s);
+  UnitedKingdomMarket(super.s);
+
 }
 
 // ============================================================
@@ -132,7 +135,8 @@ class AustraliaMarket extends _SimpleMarket {
   @override String get maxOffBrkKey => 'ausoffmaxrmbrkrate';
   @override double get minIbFee => 20;
 
-  AustraliaMarket(SettingsManager s) : super(s);
+  AustraliaMarket(super.s);
+
 }
 
 // ============================================================
@@ -154,7 +158,8 @@ class JapanMarket extends _SimpleMarket {
   @override String get maxOffBrkKey => 'japoffmaxrmbrkrate';
   @override double get minIbFee => 3000;
 
-  JapanMarket(SettingsManager s) : super(s);
+  JapanMarket(super.s);
+
 }
 
 // ============================================================
@@ -195,7 +200,8 @@ class CanadaMarket extends _SimpleMarket {
   @override double get specialForeignMin => 0;
   @override double get specialCombinedMin => 95;
 
-  CanadaMarket(SettingsManager s) : super(s);
+  CanadaMarket(super.s);
+
 }
 
 // ============================================================
@@ -217,5 +223,6 @@ class GermanyMarket extends _SimpleMarket {
   @override String get maxOffBrkKey => 'geroffmaxrmbrkrate';
   @override double get minIbFee => 20;
 
-  GermanyMarket(SettingsManager s) : super(s);
+  GermanyMarket(super.s);
+
 }
