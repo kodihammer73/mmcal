@@ -36,9 +36,25 @@ jobs:
       - name: Build iOS app (unsigned)
         run: flutter build ios --release --no-codesign
 
-      - name: Upload iOS build artifact
+      - name: Package unsigned .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -r mmcal-ios.ipa Payload
+          rm -rf Payload
+
+      - name: Upload iOS .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmcal-ios-ipa
+          path: mmcal-ios.ipa
+          if-no-files-found: error
+
+      - name: Upload iOS .app artifact
         uses: actions/upload-artifact@v4
         with:
           name: mmcal-ios-app
           path: build/ios/iphoneos/Runner.app
           if-no-files-found: error
+
+
