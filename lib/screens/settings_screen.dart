@@ -162,8 +162,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Settings'),
         actions: [
-          TextButton(onPressed: _reset, child: const Text('Reset')),
-          TextButton(onPressed: _save, child: const Text('Save')),
+          TextButton(
+            onPressed: _reset,
+            child: const Text('Reset', style: TextStyle(color: Colors.white)),
+          ),
+          FilledButton(
+            onPressed: _save,
+            child: const Text('Save'),
+          ),
         ],
       ),
       body: ListView(
@@ -176,7 +182,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildGroup(_Group g) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
+        leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
         title: Text(g.title, style: const TextStyle(fontWeight: FontWeight.bold)),
         initiallyExpanded: g.title == 'General',
         children: g.fields.map((f) => _buildField(f)).toList(),
@@ -192,14 +200,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           labelText: f.label,
-          border: const OutlineInputBorder(),
-          isDense: true,
         ),
         onChanged: (_) => setState(() {}),
       ),
     );
   }
 }
+
 
 class _Group {
   final String title;

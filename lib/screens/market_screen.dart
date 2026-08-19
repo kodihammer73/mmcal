@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../engine/engine.dart';
+import '../main.dart';
 import '../markets/malaysia.dart';
 
 final _numFmt = NumberFormat('#,##0.00');
@@ -141,31 +142,31 @@ class _MarketScreenState extends State<MarketScreen> {
     final m = widget.market;
     final isMalaysia = m is MalaysiaMarket;
     final isForeign = m.currency != 'MYR';
-    final theme = Theme.of(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Inputs ──────────────────────────────────────────
+          // ── Section header: Trade Details ───────────────────
+          _sectionHeader(Icons.tune, 'Trade Details'),
+          const SizedBox(height: 8),
           _card(
             child: Column(
               children: [
                 // Row 1: Quantity + Special Brk Rate (same row)
                 Row(children: [
-                  Expanded(child: _inputField(_qtyCtrl, 'Quantity', TextInputType.number)),
+                  Expanded(child: _inputField(_qtyCtrl, 'Quantity', TextInputType.number, prefix: const Icon(Icons.tag, size: 18))),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _brkrateCtrl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-
                       decoration: const InputDecoration(
                         labelText: 'Special Brk Rate (%)',
-                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.percent, size: 18),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
                       onChanged: (val) {
                         final rate = double.tryParse(val) ?? 0;
@@ -180,19 +181,17 @@ class _MarketScreenState extends State<MarketScreen> {
                 const SizedBox(height: 8),
                 // Row 2: Buy / Sell price
                 Row(children: [
-                  Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
+                  Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.shopping_cart, size: 18))),
                   const SizedBox(width: 8),
-                  Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
-
+                  Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.sell, size: 18))),
                 ]),
                 const SizedBox(height: 8),
                 // Row 3: Buy / Sell rate (foreign only)
                 if (isForeign) ...[
                   Row(children: [
-                    Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
+                    Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18))),
                     const SizedBox(width: 8),
-                    Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true))),
-
+                    Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18))),
                   ]),
                   const SizedBox(height: 8),
                 ],
@@ -200,64 +199,57 @@ class _MarketScreenState extends State<MarketScreen> {
                 Row(children: [
                   if (m.supportsOnline) ...[
                     Expanded(child: _fixedChip('Offline', !_isOnline, (_) => setState(() { _isOnline = false; _autoCalculate(); }))),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Expanded(child: _fixedChip('Online', _isOnline, (_) => setState(() { _isOnline = true; _autoCalculate(); }))),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                   ],
                   Expanded(child: _fixedChip('Buy', _buyCtrl.text.isNotEmpty, (_) {})),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Expanded(child: _fixedChip('Sell', _sellCtrl.text.isNotEmpty, (_) {})),
                 ]),
                 const SizedBox(height: 8),
-                // Row 5: MIN RM12 / No Stamp Duty / DF A/C
-                Row(children: [
-                  if (m.flagMinRm12) ...[
-                    Expanded(child: _fixedChip('MIN RM12', _flagMinRm12, (v) => setState(() { _flagMinRm12 = v!; _autoCalculate(); }))),
-                    const SizedBox(width: 8),
+                // Row 5: Options chips (Wrap so they flow into fewer lines)
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (m.flagMinRm12)
+                      _fixedChip('MIN RM12', _flagMinRm12, (v) => setState(() { _flagMinRm12 = v!; _autoCalculate(); })),
+                    if (m.flagNoSduty)
+                      _fixedChip('No Stamp Duty', _flagNoSduty, (v) => setState(() { _flagNoSduty = v!; _autoCalculate(); })),
+                    if (isMalaysia)
+                      _fixedChip('DF A/C', _dfAc, (v) => setState(() { _dfAc = v!; _autoCalculate(); })),
+                    _fixedChip('Special Rate', _flagSpecial, (v) => setState(() { _flagSpecial = v!; _autoCalculate(); })),
+                    _fixedChip('Apply GST/SST', _applyGst, (v) => setState(() { _applyGst = v!; _autoCalculate(); })),
+                    if (isForeign)
+                      _fixedChip('Sett in ${m.currency}', _settleLocal, (v) => setState(() { _settleLocal = v!; _autoCalculate(); })),
                   ],
-                  if (m.flagNoSduty) ...[
-                    Expanded(child: _fixedChip('No Stamp Duty', _flagNoSduty, (v) => setState(() { _flagNoSduty = v!; _autoCalculate(); }))),
-                    const SizedBox(width: 8),
-                  ],
-                  if (isMalaysia) ...[
-                    Expanded(child: _fixedChip('DF A/C', _dfAc, (v) => setState(() { _dfAc = v!; _autoCalculate(); }))),
-                    if (_dfAc) ...[
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 90,
-                        child: TextField(
-                          controller: _dfDaysCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'DF Days',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                          ),
-                          onChanged: (v) {
-                            final d = int.tryParse(v);
-                            if (d != null) {
-                              setState(() { _dfDays = d; });
-                              _autoCalculate();
-                            }
-                          },
-                        ),
+                ),
+                // DF Days field (Malaysia only, shown when DF A/C ticked)
+                if (isMalaysia && _dfAc) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: 120,
+                    child: TextField(
+                      controller: _dfDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'DF Days',
+                        prefixIcon: Icon(Icons.calendar_today, size: 18),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
-                    ],
-                  ],
-                ]),
-                const SizedBox(height: 8),
-                // Row 6: Special Rate / Apply GST/SST / Sett in xxxx
-                Row(children: [
-                  Expanded(child: _fixedChip('Special Rate', _flagSpecial, (v) => setState(() { _flagSpecial = v!; _autoCalculate(); }))),
-                  const SizedBox(width: 8),
-                  Expanded(child: _fixedChip('Apply GST/SST', _applyGst, (v) => setState(() { _applyGst = v!; _autoCalculate(); }))),
-                  if (isForeign) ...[
-                    const SizedBox(width: 8),
-                    Expanded(child: _fixedChip('Sett in ${m.currency}', _settleLocal, (v) => setState(() { _settleLocal = v!; _autoCalculate(); }))),
-                  ],
-                ]),
-                const SizedBox(height: 12),
+                      onChanged: (v) {
+                        final d = int.tryParse(v);
+                        if (d != null) {
+                          setState(() { _dfDays = d; });
+                          _autoCalculate();
+                        }
+                      },
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
                     child: FilledButton.icon(
@@ -267,7 +259,11 @@ class _MarketScreenState extends State<MarketScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  OutlinedButton(onPressed: _clear, child: const Text('Clear')),
+                  OutlinedButton.icon(
+                    onPressed: _clear,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Clear'),
+                  ),
                 ]),
               ],
             ),
@@ -276,7 +272,7 @@ class _MarketScreenState extends State<MarketScreen> {
           // ── Results ─────────────────────────────────────────
           if (_hasResults) ...[
             const SizedBox(height: 12),
-            _buildResults(isMalaysia, isForeign, theme),
+            _buildResults(isMalaysia, isForeign),
           ],
         ],
       ),
@@ -284,6 +280,23 @@ class _MarketScreenState extends State<MarketScreen> {
   }
 
   // ── Helpers matching desktop GUI ──────────────────────────
+
+  Widget _sectionHeader(IconData icon, String title) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: theme.colorScheme.primary),
+        const SizedBox(width: 6),
+        Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
 
   double? _gv(CalcResult? calc, String myrKey, String forKey) {
     if (calc == null) return null;
@@ -320,7 +333,7 @@ class _MarketScreenState extends State<MarketScreen> {
     return '$s%';
   }
 
-  Widget _buildResults(bool isMalaysia, bool isForeign, ThemeData theme) {
+  Widget _buildResults(bool isMalaysia, bool isForeign) {
     final m = widget.market;
     final cur = m.currency;
     final buyRate = double.tryParse(_buyRateCtrl.text) ?? 1.0;
@@ -415,29 +428,33 @@ class _MarketScreenState extends State<MarketScreen> {
       ));
     }
 
-    // SST/GST - Brokerage
-    final gstLabel = isMalaysia ? 'SST - Brokerage' : 'GST - Brokerage';
-    rows.add(_Row(gstLabel, _curr('MYR'),
-      buy: _disp(_buy, 'gstbrkamt', 'gstbrkamtcv', buyRate),
-      sell: _disp(_sell, 'gstbrkamt', 'gstbrkamtcv', sellRate),
-    ));
-
-    // SST/GST - Clearing Fee (always shown)
-    final gstClrLabel = isMalaysia ? 'SST - Clearing Fee' : 'GST - Clearing Fee';
-    rows.add(_Row(gstClrLabel, _curr('MYR'),
-      buy: _disp(_buy, 'gstclrfee', null, buyRate),
-      sell: _disp(_sell, 'gstclrfee', null, sellRate),
-    ));
-
-    // GST - Foreign Brokerage (US/HK/SG) / GST - IB Charges (other foreign)
-    if (!isMalaysia) {
-      final gstIbLabel = (m.name == 'United States (US)' || m.name == 'Hong Kong' || m.name == 'Singapore')
-          ? 'GST - Foreign Brokerage' : 'GST - IB Charges';
-      rows.add(_Row(gstIbLabel, _curr('MYR'),
-        buy: _disp(_buy, 'gstforfee', 'gstforfeecv', buyRate),
-        sell: _disp(_sell, 'gstforfee', 'gstforfeecv', sellRate),
+    // SST/GST rows are only shown when the "Apply GST/SST" toggle is ON.
+    if (_applyGst) {
+      // SST/GST - Brokerage
+      final gstLabel = isMalaysia ? 'SST - Brokerage' : 'GST - Brokerage';
+      rows.add(_Row(gstLabel, _curr('MYR'),
+        buy: _disp(_buy, 'gstbrkamt', 'gstbrkamtcv', buyRate),
+        sell: _disp(_sell, 'gstbrkamt', 'gstbrkamtcv', sellRate),
       ));
+
+      // SST/GST - Clearing Fee
+      final gstClrLabel = isMalaysia ? 'SST - Clearing Fee' : 'GST - Clearing Fee';
+      rows.add(_Row(gstClrLabel, _curr('MYR'),
+        buy: _disp(_buy, 'gstclrfee', null, buyRate),
+        sell: _disp(_sell, 'gstclrfee', null, sellRate),
+      ));
+
+      // GST - Foreign Brokerage (US/HK/SG) / GST - IB Charges (other foreign)
+      if (!isMalaysia) {
+        final gstIbLabel = (m.name == 'United States (US)' || m.name == 'Hong Kong' || m.name == 'Singapore')
+            ? 'GST - Foreign Brokerage' : 'GST - IB Charges';
+        rows.add(_Row(gstIbLabel, _curr('MYR'),
+          buy: _disp(_buy, 'gstforfee', 'gstforfeecv', buyRate),
+          sell: _disp(_sell, 'gstforfee', 'gstforfeecv', sellRate),
+        ));
+      }
     }
+
 
     // DF A/C rows (Malaysia only)
     if (_dfBuy != null) {
@@ -447,9 +464,12 @@ class _MarketScreenState extends State<MarketScreen> {
       rows.add(_Row('DF Fees', 'MYR',
         buy: _dfBuy?['dffee'],
       ));
-      rows.add(_Row('GST - DF Fees', 'MYR',
-        buy: _dfBuy?['dfgstfee'],
-      ));
+      if (_applyGst) {
+        rows.add(_Row('GST - DF Fees', 'MYR',
+          buy: _dfBuy?['dfgstfee'],
+        ));
+      }
+
     }
 
     // TOTAL row
@@ -485,13 +505,19 @@ class _MarketScreenState extends State<MarketScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Results ($modeLabel)',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              Icon(Icons.receipt_long, size: 18, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 6),
+              Text('Results ($modeLabel)',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+            ],
+          ),
           const SizedBox(height: 8),
           // Header row
-          _buildHeader(theme),
+          _buildHeader(),
           const Divider(height: 1),
-          ...rows.map((row) => _ResultRow(row: row)),
+          ...rows.asMap().entries.map((e) => _ResultRow(row: e.value, index: e.key)),
         ],
       ),
     );
@@ -504,19 +530,23 @@ class _MarketScreenState extends State<MarketScreen> {
     return false;
   }
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader() {
+    final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final buyColor = isDark ? const Color(0xFF4ade80) : const Color(0xFF166534);
-    final sellColor = isDark ? const Color(0xFFf87171) : const Color(0xFF991b1b);
+    final buyColor = isDark ? AppColors.buyDark : AppColors.buyLight;
+    final sellColor = isDark ? AppColors.sellDark : AppColors.sellLight;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Row(
         children: [
           const Expanded(flex: 3, child: Text('Item', style: TextStyle(fontWeight: FontWeight.bold))),
           const Expanded(flex: 1, child: Text('Curr', style: TextStyle(fontWeight: FontWeight.bold))),
           const Expanded(flex: 2, child: Text('Rate', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
-
           Expanded(flex: 3, child: Text('BUY', style: TextStyle(fontWeight: FontWeight.bold, color: buyColor), textAlign: TextAlign.right)),
           Expanded(flex: 3, child: Text('SELL', style: TextStyle(fontWeight: FontWeight.bold, color: sellColor), textAlign: TextAlign.right)),
         ],
@@ -525,31 +555,31 @@ class _MarketScreenState extends State<MarketScreen> {
   }
 
   Widget _card({required Widget child}) => Card(
-    elevation: 2,
     child: Padding(padding: const EdgeInsets.all(12), child: child),
   );
 
-  Widget _inputField(TextEditingController ctrl, String label, TextInputType type) => TextField(
+  Widget _inputField(TextEditingController ctrl, String label, TextInputType type, {Widget? prefix}) => TextField(
     controller: ctrl,
     keyboardType: type,
     decoration: InputDecoration(
       labelText: label,
-      border: const OutlineInputBorder(),
+      prefixIcon: prefix,
       isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     ),
   );
 
   /// Flexible toggle chip. Uses FilterChip with no checkmark so the chip
-  /// only highlights when selected (no size jump / no tick). Callers should
-  /// wrap this in an [Expanded] so chips share the row width evenly and never
-  /// overflow on narrow screens.
+  /// only highlights when selected (no size jump / no tick).
   Widget _fixedChip(String label, bool value, ValueChanged<bool?> onChanged) {
     return FilterChip(
-      label: Text(label, textAlign: TextAlign.center),
+      label: Text(label, textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall),
       selected: value,
       showCheckmark: false,
-      labelPadding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 2),
       onSelected: (v) => onChanged(v),
     );
   }
@@ -572,15 +602,16 @@ class _Row {
 
 class _ResultRow extends StatelessWidget {
   final _Row row;
-  const _ResultRow({required this.row});
+  final int index;
+  const _ResultRow({required this.row, required this.index});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final buyColor = isDark ? const Color(0xFF4ade80) : const Color(0xFF166534);
-    final sellColor = isDark ? const Color(0xFFf87171) : const Color(0xFF991b1b);
-    final totalColor = isDark ? const Color(0xFF93c5fd) : const Color(0xFF1a56db);
+    final buyColor = isDark ? AppColors.buyDark : AppColors.buyLight;
+    final sellColor = isDark ? AppColors.sellDark : AppColors.sellLight;
+    final totalColor = isDark ? AppColors.totalDark : AppColors.totalLight;
 
     String withCurr(double? v) => v == null ? '' : '${row.curr} ${_numFmt.format(v)}';
 
@@ -599,14 +630,21 @@ class _ResultRow extends StatelessWidget {
       return theme.textTheme.bodySmall?.copyWith(color: cellColor(v, isBuy));
     }
 
+    // Alternating row striping for readability
+    final stripe = !row.isTotal && index.isOdd
+        ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4)
+        : null;
+
     return Container(
       decoration: row.isTotal
           ? BoxDecoration(
               color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(8),
             )
-          : null,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          : stripe != null
+              ? BoxDecoration(color: stripe, borderRadius: BorderRadius.circular(6))
+              : null,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       margin: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
         children: [

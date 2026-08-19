@@ -24,7 +24,30 @@ void main() async {
   runApp(const MMCalApp());
 }
 
+/// Brand palette used across the app.
+class AppColors {
+  AppColors._();
 
+  // Primary blue / indigo identity
+  static const Color primary = Color(0xFF1E3A8A); // deep indigo
+  static const Color accent = Color(0xFF2563EB); // vivid blue
+  static const Color accentLight = Color(0xFF60A5FA);
+  static const Color darkPrimary = Color(0xFF0D2A66);
+
+  // Gradient for the app bar
+  static const List<Color> appBarGradient = [Color(0xFF1E3A8A), Color(0xFF2563EB)];
+  static const List<Color> appBarGradientDark = [Color(0xFF0D2A66), Color(0xFF1E3A8A)];
+
+  // Buy / Sell accents (light mode)
+  static const Color buyLight = Color(0xFF15803D);
+  static const Color sellLight = Color(0xFFB91C1C);
+  static const Color totalLight = Color(0xFF1D4ED8);
+
+  // Buy / Sell accents (dark mode)
+  static const Color buyDark = Color(0xFF4ADE80);
+  static const Color sellDark = Color(0xFFF87171);
+  static const Color totalDark = Color(0xFF93C5FD);
+}
 
 class MMCalApp extends StatefulWidget {
   const MMCalApp({super.key});
@@ -68,31 +91,105 @@ class _MMCalAppState extends State<MMCalApp> {
     });
   }
 
+  ThemeData _buildTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final scheme = ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: brightness,
+      primary: isDark ? AppColors.accentLight : AppColors.primary,
+    );
+
+    return ThemeData(
+      colorScheme: scheme,
+      useMaterial3: true,
+      scaffoldBackgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            width: 1,
+          ),
+        ),
+        margin: EdgeInsets.zero,
+      ),
+      chipTheme: ChipThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+        showCheckmark: false,
+        labelStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+        selectedColor: scheme.primary,
+        backgroundColor: scheme.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
+        ),
+        isDense: true,
+        labelStyle: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      dividerTheme: DividerThemeData(
+        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+        thickness: 1,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MMCal',
       debugShowCheckedModeBanner: false,
       themeMode: _themeMode,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF1565C0),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1565C0),
-          foregroundColor: Colors.white,
-          elevation: 2,
-        ),
-      ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF1565C0),
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0D47A1),
-          foregroundColor: Colors.white,
-          elevation: 2,
-        ),
-      ),
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
       home: _updateResult?.updateRequired == true
           ? UpdateRequiredScreen(result: _updateResult!)
           : HomeScreen(
@@ -153,8 +250,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     await ad.load();
   }
 
-
-
   Future<void> _loadVersion() async {
     final info = await PackageInfo.fromPlatform();
     if (mounted) {
@@ -165,7 +260,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-
   @override
   void dispose() {
     _tabController.dispose();
@@ -173,58 +267,98 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gradient = isDark ? AppColors.appBarGradientDark : AppColors.appBarGradient;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('MultiMarket Calculator - $_version', style: const TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            icon: Icon(
-              switch (widget.themeMode) {
-                ThemeMode.system => Icons.brightness_auto,
-                ThemeMode.light => Icons.light_mode,
-                ThemeMode.dark => Icons.dark_mode,
-              },
-            ),
-            tooltip: 'Theme: ${widget.themeMode.name}',
-            onPressed: widget.onCycleThemeMode,
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.amber,
-          tabs: markets.map<Widget>((m) => Tab(text: m.name)).toList(),
-        ),
-      ),
       body: Column(
         children: [
+          // ── Gradient AppBar with rounded bottom ─────────────
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: gradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calculate, color: Colors.white, size: 26),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'MultiMarket Calculator',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+
+                        IconButton(
+                          icon: Icon(
+                            switch (widget.themeMode) {
+                              ThemeMode.system => Icons.brightness_auto,
+                              ThemeMode.light => Icons.light_mode,
+                              ThemeMode.dark => Icons.dark_mode,
+                            },
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Theme: ${widget.themeMode.name}',
+                          onPressed: widget.onCycleThemeMode,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.settings, color: Colors.white),
+                          tooltip: 'Settings',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white70,
+                    indicatorColor: Colors.amber,
+                    indicatorWeight: 3,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    tabs: markets.map<Widget>((m) => Tab(text: m.name)).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // ── Body ────────────────────────────────────────────
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: markets.map<Widget>((m) => MarketScreen(market: m)).toList(),
             ),
           ),
+          // ── Footer disclaimer ───────────────────────────────
           Container(
             width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+            margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: Theme.of(context).colorScheme.outlineVariant,
                 width: 1,
@@ -232,16 +366,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
             child: Column(
               children: [
-                Text(
-                  '${DateTime.now().year} - Developed by Hemerjit - $_version',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '${DateTime.now().year} - Developed by Hemerjit - $_version',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                 ),
-
                 const SizedBox(height: 4),
                 Text(
                   'Calculations are estimates for informational purposes only. Actual charges may vary depending on the broker, exchange, transaction type and applicable fees.',
@@ -266,11 +409,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               alignment: Alignment.center,
               child: AdWidget(ad: _bannerAd!),
             ),
-
         ],
       ),
     );
   }
 }
-
-
