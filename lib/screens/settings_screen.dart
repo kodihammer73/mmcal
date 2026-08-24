@@ -28,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _Field('malonbrkrate1', 'Online Brk Rate < RM100K (%)'),
       _Field('malonbrkrate2', 'Online Brk Rate >= RM100K (%)'),
       _Field('malminbrk', 'Min Brokerage RM12'),
+      _Field('malminbrk8', 'Min Brokerage RM8'),
     ]),
     _Group('United States (US)', [
       _Field('usaforchrgrate', 'Foreign Charge Rate (%)'),

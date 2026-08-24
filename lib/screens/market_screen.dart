@@ -24,7 +24,7 @@ class _MarketScreenState extends State<MarketScreen> {
   final _dfDaysCtrl = TextEditingController(text: '5');
 
   bool _isOnline = true; // Default to online
-  bool _flagMinRm12 = false;
+  int _flagMinRm = 0; // Malaysia min-brokerage tier: 0=off, 12=Min RM12, 8=Min RM8
   bool _flagNoSduty = false;
   bool _flagSpecial = false;
   bool _applyGst = false; // Desktop: "Apply GST/SST" checkbox (default unchecked)
@@ -39,7 +39,7 @@ class _MarketScreenState extends State<MarketScreen> {
 
   int get _flag {
     int f = 0;
-    if (_flagMinRm12) f |= 1;
+    if (_flagMinRm > 0) f |= 1;
     if (_flagSpecial) f |= 2;
     if (_flagNoSduty) f |= 4;
     if (_settleLocal) f |= 8;
@@ -77,17 +77,23 @@ class _MarketScreenState extends State<MarketScreen> {
     final flag = _flag;
     final m = widget.market;
 
+    // Malaysia min-brokerage tier override (RM12 default or RM8 when selected)
+    double? minBrkOverride;
+    if (isMalaysia && _flagMinRm > 0) {
+      minBrkOverride = m.s.get(_flagMinRm == 8 ? 'malminbrk8' : 'malminbrk');
+    }
+
     final mode = _isOnline ? 6 : 5;
 
     setState(() {
-      _buy = buy > 0 ? m.calculate(mode: mode, buysel: 1, flag: flag, qty: qty, price: buy, rate: buyRate, brkrate: brkrate) : null;
-      _sell = sell > 0 ? m.calculate(mode: mode, buysel: 2, flag: flag, qty: qty, price: sell, rate: sellRate, brkrate: brkrate) : null;
+      _buy = buy > 0 ? m.calculate(mode: mode, buysel: 1, flag: flag, qty: qty, price: buy, rate: buyRate, brkrate: brkrate, minBrkOverride: minBrkOverride) : null;
+      _sell = sell > 0 ? m.calculate(mode: mode, buysel: 2, flag: flag, qty: qty, price: sell, rate: sellRate, brkrate: brkrate, minBrkOverride: minBrkOverride) : null;
 
       // DF A/C (Malaysia only)
       _dfBuy = null;
       if (isMalaysia && _dfAc && buy > 0) {
         final mm = m as MalaysiaMarket;
-        _dfBuy = mm.dfAcCalculate(mode: mode, buysel: 1, flag: flag, qty: qty, price: buy, rate: buyRate, brkrate: brkrate, noday: _dfDays);
+        _dfBuy = mm.dfAcCalculate(mode: mode, buysel: 1, flag: flag, qty: qty, price: buy, rate: buyRate, brkrate: brkrate, noday: _dfDays, minBrkOverride: minBrkOverride);
       }
     });
   }
@@ -112,7 +118,7 @@ class _MarketScreenState extends State<MarketScreen> {
       _brkrateCtrl.text = '0';
       _dfDaysCtrl.text = '5';
       _isOnline = true;
-      _flagMinRm12 = false;
+      _flagMinRm = 0;
       _flagNoSduty = false;
       _flagSpecial = false;
       _applyGst = false;
@@ -213,10 +219,12 @@ class _MarketScreenState extends State<MarketScreen> {
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    if (m.flagMinRm12)
-                      _fixedChip('MIN RM12', _flagMinRm12, (v) => setState(() { _flagMinRm12 = v!; _autoCalculate(); })),
+                    if (m.flagMinRm12) ...[
+                      _fixedChip('MIN RM12', _flagMinRm == 12, (v) => setState(() { _flagMinRm = v! ? 12 : 0; _autoCalculate(); })),
+                      _fixedChip('MIN RM8', _flagMinRm == 8, (v) => setState(() { _flagMinRm = v! ? 8 : 0; _autoCalculate(); })),
+                    ],
                     if (m.flagNoSduty)
-                      _fixedChip('No Stamp Duty', _flagNoSduty, (v) => setState(() { _flagNoSduty = v!; _autoCalculate(); })),
+                      _fixedChip('NO S/D', _flagNoSduty, (v) => setState(() { _flagNoSduty = v!; _autoCalculate(); })),
                     if (isMalaysia)
                       _fixedChip('DF A/C', _dfAc, (v) => setState(() { _dfAc = v!; _autoCalculate(); })),
                     _fixedChip('Special Rate', _flagSpecial, (v) => setState(() { _flagSpecial = v!; _autoCalculate(); })),

@@ -50,6 +50,7 @@ abstract class Market {
     required double price,
     double rate = 1.0,
     double brkrate = 0,
+    double? minBrkOverride, // Malaysia only: min-brokerage tier override (e.g. RM8)
   });
 
   /// Net sell value in RM (for breakeven/contra)
@@ -169,6 +170,7 @@ abstract class ForeignMarket extends Market {
     required double price,
     double rate = 1.0,
     double brkrate = 0,
+    double? minBrkOverride, // unused: min-brokerage tiers apply to Malaysia only
   }) {
     final flagSpecial = (flag & 2) != 0;
     final flagNoGst = (flag & 16) != 0;

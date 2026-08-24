@@ -21,6 +21,7 @@ class MalaysiaMarket extends Market {
     required double price,
     double rate = 1.0,
     double brkrate = 0,
+    double? minBrkOverride,
   }) {
     final flagMinRm12 = (flag & 1) != 0;
     final flagSpecial = (flag & 2) != 0;
@@ -63,7 +64,9 @@ class MalaysiaMarket extends Market {
     double clrfeerate = s.get('malclrfeerate');
 
     if (lbFlag == 1 || lbFlag == 3 || lbFlag == 9 || lbFlag == 10) {
-      brokerage = s.get('malminbrk');
+      // Minimum-brokerage scheme applies: use the selected tier's minimum
+      // (RM8 override when provided, otherwise the standard malminbrk setting).
+      brokerage = minBrkOverride ?? s.get('malminbrk');
     }
     if (lbFlag == 2 || lbFlag == 3 || lbFlag == 7 || lbFlag == 9) {
       brkamtrate = brkrate;
@@ -134,8 +137,9 @@ class MalaysiaMarket extends Market {
     double rate = 1.0,
     double brkrate = 0,
     int noday = 5,
+    double? minBrkOverride,
   }) {
-    final base = calculate(mode: mode, buysel: buysel, flag: flag, qty: qty, price: price, rate: rate, brkrate: brkrate);
+    final base = calculate(mode: mode, buysel: buysel, flag: flag, qty: qty, price: price, rate: rate, brkrate: brkrate, minBrkOverride: minBrkOverride);
     double buyval = base.get('net_value');
 
     if (noday <= 4) {

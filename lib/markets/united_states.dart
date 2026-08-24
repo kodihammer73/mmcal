@@ -88,6 +88,7 @@ class UnitedStatesMarket extends ForeignMarket {
     required double price,
     double rate = 1.0,
     double brkrate = 0,
+    double? minBrkOverride, // unused: min-brokerage tiers apply to Malaysia only
   }) {
     final flagSpecial = (flag & 2) != 0;
     final flagNoGst = (flag & 16) != 0;

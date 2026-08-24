@@ -217,6 +217,31 @@ void main() {
       check('brkamt (RM)', calc.get('brkamt'), 12);
     });
 
+    test('MIN RM8 override floors small trade brokerage at RM8', () {
+      final calc = my.calculate(mode: 5, buysel: 1, flag: 1, qty: 1000, price: 0.80, minBrkOverride: 8.00);
+      // brk = 800*0.60% = 4.80 -> floored to min RM8 (override), not RM12 or RM40
+      check('brkamt (RM)', calc.get('brkamt'), 8);
+    });
+
+    test('MIN RM8 override - percentage above floor wins', () {
+      final calc = my.calculate(mode: 5, buysel: 1, flag: 1, qty: 10000, price: 1.50, minBrkOverride: 8.00);
+      // brk = 15000*0.60% = 90 -> percentage beats the floor
+      check('brkamt (RM)', calc.get('brkamt'), 90);
+    });
+
+    test('MIN RM8 combined with Special Rate and NO S/D (flag=7)', () {
+      final calc = my.calculate(mode: 6, buysel: 1, flag: 7, qty: 1000, price: 1.50, brkrate: 0.10, minBrkOverride: 8.00);
+      check('brkamtrate', calc.get('brkamtrate'), 0.10);
+      // brk = 1500*0.10% = 1.50 -> floored to RM8
+      check('brkamt (RM)', calc.get('brkamt'), 8);
+      check('stampduty (RM)', calc.get('stampduty'), 0);
+    });
+
+    test('No override keeps default RM12 minimum', () {
+      final calc = my.calculate(mode: 6, buysel: 1, flag: 1, qty: 1000, price: 1.50);
+      check('brkamt (RM)', calc.get('brkamt'), 12);
+    });
+
     test('No Stamp Duty flag', () {
       // bit2 (value 4) = no stamp duty
       final calc = my.calculate(mode: 5, buysel: 1, flag: 4, qty: 1000, price: 1.50);

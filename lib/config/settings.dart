@@ -16,6 +16,7 @@ const Map<String, double> kDefaultSettings = {
   'malonbrkrate1': 0.42,
   'malonbrkrate2': 0.21,
   'malminbrk': 12.00,
+  'malminbrk8': 8.00,
   // USA
   'usaforchrgrate': 0.03,
   'usaminbrk': 0.00,
