@@ -233,10 +233,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _restoreLastMarket() async {
     final idx = await FormStateStore.loadLastMarket();
     if (!mounted) return;
-    if (idx != null && idx >= 0 && idx < markets.length) {
+    if (idx == null || idx < 0 || idx >= markets.length) return;
+
+    // Defer the index change until AFTER the tab bar has laid out. Setting
+    // TabController.index right after an await can race with the first frame:
+    // the horizontal TabBar's ScrollPosition may not have clients / a real
+    // viewport yet, and jumping the index then throws "Null check operator
+    // used on a null value" inside _tabCenteredScrollOffset. Running it post-
+    // frame guarantees the scrollable exists and has dimensions.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_tabController.indexIsChanging && _tabController.index == idx) {
+        setState(() {});
+        return;
+      }
       _tabController.index = idx;
-    }
-    setState(() {});
+      setState(() {});
+    });
   }
 
   void _onTabChanged() {
