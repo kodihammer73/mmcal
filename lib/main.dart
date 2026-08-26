@@ -10,7 +10,9 @@ import 'screens/market_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/update_required_screen.dart';
 import 'services/admob_service.dart';
+import 'services/form_state.dart';
 import 'services/update_check.dart';
+import 'ui/branding.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -221,8 +223,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.initState();
     markets = getAllMarkets(SettingsManager.instance);
     _tabController = TabController(length: markets.length, vsync: this);
+    _restoreLastMarket();
+    _tabController.addListener(_onTabChanged);
     _loadVersion();
     _loadBannerAd();
+  }
+
+  /// Reopens the app on the market the user was last viewing.
+  Future<void> _restoreLastMarket() async {
+    final idx = await FormStateStore.loadLastMarket();
+    if (!mounted) return;
+    if (idx != null && idx >= 0 && idx < markets.length) {
+      _tabController.index = idx;
+    }
+    setState(() {});
+  }
+
+  void _onTabChanged() {
+    if (!mounted) return;
+    if (!_tabController.indexIsChanging) {
+      FormStateStore.saveLastMarket(_tabController.index);
+      setState(() {});
+    }
   }
 
   /// Loads the AdMob banner ad in the background.
@@ -293,16 +315,41 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
                     child: Row(
                       children: [
-                        const Icon(Icons.calculate, color: Colors.white, size: 26),
+                        Image.asset(
+                          'MMCaltrans.png',
+                          width: 26,
+                          height: 26,
+                          cacheWidth: 96,
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.calculate, color: Colors.white, size: 26),
+                        ),
                         const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'MultiMarket Calculator',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'MultiMarket Trade Calculator',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                '${marketFlag(markets[_tabController.index].name)} ${markets[_tabController.index].name}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
                         ),
 
@@ -338,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     indicatorColor: Colors.amber,
                     indicatorWeight: 3,
                     labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    tabs: markets.map<Widget>((m) => Tab(text: m.name)).toList(),
+                    tabs: markets.map<Widget>((m) => Tab(text: '${marketFlag(m.name)} ${m.name}')).toList(),
                   ),
                 ],
               ),

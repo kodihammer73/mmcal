@@ -17,12 +17,19 @@ Built with **Flutter** for **Android** and **iOS**.
 - Dark / Light / System theme toggle
 - AdMob banner ads
 - Forced update mechanism
+- Per-market input persistence (reopens where you left off)
+- Last-used market restore on launch
+- Per-market flag emoji + accent color
+- Copy / Share results summary
+- Live inline validation (no more silent no-op Calculate)
+- Animated results entry with auto scroll-to-results
 
 ## Tech Stack
 - Flutter (Dart 3.x)
-- `shared_preferences` — settings persistence
+- `shared_preferences` — settings & per-market form persistence
 - `intl` — number formatting
 - `google_mobile_ads` — AdMob banner ads
+- `share_plus` — share results summary
 - `package_info_plus` — app version
 - `http` + `url_launcher` — forced update check
 
@@ -45,9 +52,12 @@ lib/
 │   ├── market_screen.dart         # Per-market tab: buy/sell inputs, chips, results
 │   ├── settings_screen.dart       # Expandable settings by market group
 │   └── update_required_screen.dart # Blocking forced-update screen
-└── services/
-    ├── admob_service.dart         # AdMob banner ad service
-    └── update_check.dart          # Forced update checker
+├── services/
+│   ├── admob_service.dart         # AdMob banner ad service
+│   ├── form_state.dart            # Per-market input persistence + last market
+│   └── update_check.dart          # Forced update checker
+└── ui/
+    └── branding.dart              # Per-market flag emoji + accent colors
 ```
 
 ## Building
@@ -77,7 +87,7 @@ The `.github/workflows/ios.yml` workflow runs on every push to `main`:
 ```bash
 flutter test
 ```
-30 tests pass (29 engine parity tests mirroring the Python desktop test suites + 1 smoke test).
+41 tests pass (29 engine parity tests mirroring the Python desktop test suites + widget/unit tests for the UI features).
 
 ## App Store / iOS Signing
 To install on a device or publish to the App Store, you need:
