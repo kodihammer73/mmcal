@@ -170,4 +170,85 @@ void main() {
       expect(copiedText, contains('TOTAL'));
     });
   });
+
+  group('MarketScreen copy summary format', () {
+    testWidgets('both buy and sell show both columns and no line wraps', (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      await tester.pumpWidget(_wrap());
+      await tester.enterText(find.widgetWithText(TextField, 'Quantity'), '100');
+      await tester.enterText(find.widgetWithText(TextField, 'Buy Price (MYR)'), '1.50');
+      await tester.enterText(find.widgetWithText(TextField, 'Sell Price (MYR)'), '1.60');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Calculate'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.copy));
+      await tester.pumpAndSettle();
+      expect(copied, isNotNull);
+      expect(copied, contains('BUY'));
+      expect(copied, contains('SELL'));
+      final lines = copied!.split('\n');
+      for (final l in lines) {
+        if (l.contains('Estimates')) continue;
+        if (l.trim().isEmpty) continue;
+        expect(l.length, lessThanOrEqualTo(33), reason: 'line wraps: "$l"');
+      }
+    });
+
+    testWidgets('buy only shows BUY column and no SELL', (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      await tester.pumpWidget(_wrap());
+      await tester.enterText(find.widgetWithText(TextField, 'Quantity'), '100');
+      await tester.enterText(find.widgetWithText(TextField, 'Buy Price (MYR)'), '1.50');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Calculate'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.copy));
+      await tester.pumpAndSettle();
+      expect(copied, isNotNull);
+      expect(copied, contains('BUY'));
+      expect(copied, isNot(contains('SELL')));
+    });
+
+    testWidgets('sell only shows SELL column and no BUY', (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      await tester.pumpWidget(_wrap());
+      await tester.enterText(find.widgetWithText(TextField, 'Quantity'), '100');
+      await tester.enterText(find.widgetWithText(TextField, 'Sell Price (MYR)'), '1.60');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Calculate'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.copy));
+      await tester.pumpAndSettle();
+      expect(copied, isNotNull);
+      expect(copied, contains('SELL'));
+      expect(copied, isNot(contains('BUY')));
+    });
+  });
 }

@@ -762,33 +762,47 @@ class _MarketScreenState extends State<MarketScreen> {
   /// copy/share. Header line mirrors the on-screen table columns.
   /// Renders the results as a compact, aligned plain-text summary for
   /// copy/share. Header line mirrors the on-screen table columns.
+  /// Builds a shareable/copyable plain-text summary.
+  ///
+  /// Adaptive columns: only the columns the user actually entered are shown
+  /// (BUY only, SELL only, or both), so every row stays on one line and fits
+  /// within a phone chat width (~33 chars max) without wrapping.
   String _buildSummaryText(List<_Row> rows) {
     final market = widget.market;
+    final hasBuy = rows.any((r) => r.buy != null);
+    final hasSell = rows.any((r) => r.sell != null);
     final b = StringBuffer();
-    b.writeln('${marketFlag(market.name)} ${market.name} — '
-        '${_isOnline ? 'Online' : 'Offline'} Estimate');
-    b.writeln('Qty ${_qtyCtrl.text} · Buy ${_buyCtrl.text.isEmpty ? '-' : _buyCtrl.text} '
-        '· Sell ${_sellCtrl.text.isEmpty ? '-' : _sellCtrl.text} '
-        '(${market.currency})');
-    b.writeln('-' * 46);
-    b.writeln('Item'.padRight(16) + 'Curr'.padLeft(4) +
-        ''.padLeft(8) + 'BUY'.padLeft(9) + 'SELL'.padLeft(9));
+    b.writeln('${marketFlag(market.name)} ${market.name} - '
+        '${_isOnline ? 'Online' : 'Offline'}');
+    final qty = _qtyCtrl.text;
+    final buyTxt = _buyCtrl.text.isNotEmpty ? _buyCtrl.text : '-';
+    final sellTxt = _sellCtrl.text.isNotEmpty ? _sellCtrl.text : '-';
+    if (hasBuy && hasSell) {
+      b.writeln('Qty $qty - $buyTxt/$sellTxt ${market.currency}');
+    } else if (hasBuy) {
+      b.writeln('Qty $qty - $buyTxt ${market.currency}');
+    } else {
+      b.writeln('Qty $qty - $sellTxt ${market.currency}');
+    }
+    b.writeln();
+    final head = 'Item'.padRight(15) +
+        (hasBuy ? 'BUY'.padLeft(8) : '') +
+        (hasSell ? 'SELL'.padLeft(8) : '');
+    b.writeln(head);
+    b.writeln('-' * head.length);
     for (final r in rows) {
-      final label = r.label.length > 16 ? r.label.substring(0, 16) : r.label;
-      final buy = r.buy == null ? '' : '${r.curr} ${_numFmt.format(r.buy)}';
-      final sell = r.sell == null ? '' : '${r.curr} ${_numFmt.format(r.sell)}';
-      String line = label.padRight(16);
-      line += r.curr.padLeft(4);
-      line += ''.padLeft(8);
-      line += buy.padLeft(9);
-      line += sell.padLeft(9);
+      final label = r.label.length > 16 ? '..' : r.label;
+      final line = label.padRight(15) +
+          (hasBuy ? formatCell(r.buy).padLeft(8) : '') +
+          (hasSell ? formatCell(r.sell).padLeft(8) : '');
       b.writeln(line);
     }
-    b.writeln('-' * 46);
-    b.write('Summary for ${market.currency} market. Estimates only — actual charges may vary.');
+    b.writeln('-' * head.length);
+    b.writeln('Estimates only - actual charges may vary.');
     return b.toString();
   }
-
+  static String formatCell(double? v) =>
+      v == null ? '' : _numFmt.format(v);
   Future<void> _copySummary(List<_Row> rows) async {
     await Clipboard.setData(ClipboardData(text: _buildSummaryText(rows)));
     if (!mounted) return;
