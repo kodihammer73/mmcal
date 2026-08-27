@@ -300,6 +300,25 @@ class _MarketScreenState extends State<MarketScreen> {
                   ),
                 ]),
                 const SizedBox(height: 8),
+
+                // Quick quantity fill
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [100, 500, 1000, 5000].map((v) {
+                    return ActionChip(
+                      label: Text(v.toString(), style: Theme.of(context).textTheme.bodySmall),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onPressed: () {
+                        setState(() => _qtyCtrl.text = v.toString());
+                        _autoCalculate();
+                        _schedulePersist();
+                      },
+                    );
+                  }).toList(),
+                ),
                 // Row 2: Buy / Sell price
                 Row(children: [
                   Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.shopping_cart, size: 18), onChanged: (_) { setState(() {}); _schedulePersist(); })),
@@ -316,7 +335,16 @@ class _MarketScreenState extends State<MarketScreen> {
                   ]),
                   const SizedBox(height: 8),
                 ],
-                // Row 4: Offline / Online / Buy / Sell (highlight only, no tick)
+
+                const Divider(height: 16),
+                Row(
+                  children: [
+                    Icon(Icons.checklist, size: 16, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Text('Options', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 6),                // Row 4: Offline / Online / Buy / Sell (highlight only, no tick)
                 Row(children: [
                   if (m.supportsOnline) ...[
                     Expanded(child: _fixedChip('Offline', !_isOnline, (_) => setState(() { _isOnline = false; _autoCalculate(); }))),
@@ -422,7 +450,10 @@ class _MarketScreenState extends State<MarketScreen> {
             ),
           ],
 
-          // ── Results ─────────────────────────────────────────
+          if (_error == null && !_hasResults) ...[
+            const SizedBox(height: 12),
+            _buildEmptyState(),
+          ],          // ── Results ─────────────────────────────────────────
           if (_hasResults) ...[
             const SizedBox(height: 12),
             KeyedSubtree(
@@ -439,7 +470,14 @@ class _MarketScreenState extends State<MarketScreen> {
                     child: child,
                   ),
                 ),
-                child: _buildResults(isMalaysia, isForeign),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildResults(isMalaysia, isForeign),
+                    const SizedBox(height: 8),
+                    _buildFooter(),
+                  ],
+                ),
               ),
             ),
           ],
@@ -702,7 +740,19 @@ class _MarketScreenState extends State<MarketScreen> {
           // Header row
           _buildHeader(),
           const Divider(height: 1),
-          ...rows.asMap().entries.map((e) => _ResultRow(row: e.value, index: e.key)),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.unfold_more, size: 18),
+            title: Text('All charges',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)),
+            initiallyExpanded: true,
+            children: rows.takeWhile((r) => !r.isTotal).toList().asMap().entries
+                .map((e) => _ResultRow(row: e.value, index: e.key))
+                .toList(),
+          ),
+          ...rows.skipWhile((r) => !r.isTotal).toList().asMap().entries
+              .map((e) => _ResultRow(row: e.value, index: e.key)),
         ],
       ),
     );
@@ -766,6 +816,73 @@ class _MarketScreenState extends State<MarketScreen> {
       if (c != null && c.get(key) != 0) return true;
     }
     return false;
+  }
+
+
+  /// Friendly hint shown before any calculation has been run.
+  Widget _buildEmptyState() {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.calculate_outlined, size: 40, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Text('Enter a trade, then press Calculate', style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 4),
+          Text('Buy/sell price and fees will appear here.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  /// Footer + disclaimer. Only rendered once results are shown.
+  Widget _buildFooter() {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outlineVariant, width: 1),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.info_outline, size: 14, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  '${DateTime.now().year} - Developed by Hemerjit',
+                  style: TextStyle(
+                      color: theme.colorScheme.onSurface, fontSize: 12, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Calculations are estimates for informational purposes only. Actual charges may vary depending on the broker, exchange, transaction type and applicable fees.',
+            style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 10,
+                fontStyle: FontStyle.italic),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildHeader() {

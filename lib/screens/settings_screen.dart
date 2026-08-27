@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../config/settings.dart';
+import '../ui/branding.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -129,11 +130,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {});
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Settings saved'), duration: Duration(seconds: 2)),
+        SnackBar(content: Text(_saveMsg()), duration: const Duration(seconds: 2)),
       );
     }
   }
 
+
+  String _saveMsg() {
+    final invalid = _ctrls.values
+        .where((ctrl) => double.tryParse(ctrl.text) == null)
+        .length;
+    return invalid == 0
+        ? 'Settings saved'
+        : 'Saved valid values ($invalid invalid field${invalid == 1 ? '' : 's'} ignored)';
+  }
   Future<void> _reset() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -185,7 +195,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
-        leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
+        leading: g.title == 'General'
+            ? Icon(Icons.tune, color: Theme.of(context).colorScheme.primary)
+            : Text(marketFlag(g.title), style: const TextStyle(fontSize: 18)),
         title: Text(g.title, style: const TextStyle(fontWeight: FontWeight.bold)),
         initiallyExpanded: g.title == 'General',
         children: g.fields.map((f) => _buildField(f)).toList(),
@@ -201,6 +213,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           labelText: f.label,
+          errorText: double.tryParse(_ctrls[f.key]?.text ?? '') == null
+              ? 'Enter a valid number'
+              : null,
         ),
         onChanged: (_) => setState(() {}),
       ),

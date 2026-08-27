@@ -10,6 +10,17 @@ import 'package:flutter/material.dart';
 String marketFlag(String marketName) =>
     _flags[marketName] ?? _flags['Malaysia']!;
 
+/// Short currency code used for compact market tabs (e.g. THB for Thailand).
+String marketCode(String marketName) =>
+    _codes[marketName] ?? 'MYR';
+
+const Map<String, String> _codes = {
+  'Malaysia': 'MYR', 'Singapore': 'SGD', 'Hong Kong': 'HKD',
+  'United States (US)': 'USD', 'Thailand': 'THB', 'Indonesia': 'IDR',
+  'United Kingdom (UK)': 'GBP', 'Australia': 'AUD', 'Japan': 'JPY',
+  'Canada': 'CAD', 'Germany': 'EUR',
+};
+
 Color marketAccent(String marketName) =>
     _accents[marketName] ?? _accents['United States (US)']!;
 

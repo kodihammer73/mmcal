@@ -214,7 +214,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   late final List markets;
-  String _version = '';
   BannerAd? _bannerAd;
   bool _bannerLoaded = false;
 
@@ -225,7 +224,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _tabController = TabController(length: markets.length, vsync: this);
     _restoreLastMarket();
     _tabController.addListener(_onTabChanged);
-    _loadVersion();
     _loadBannerAd();
   }
 
@@ -283,16 +281,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
     await ad.load();
-  }
-
-  Future<void> _loadVersion() async {
-    final info = await PackageInfo.fromPlatform();
-    if (mounted) {
-      setState(() {
-        // Show the full version from pubspec.yaml, e.g. "1.0.1" -> "v1.0.1".
-        _version = 'v${info.version}';
-      });
-    }
   }
 
   @override
@@ -398,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     indicatorColor: Colors.amber,
                     indicatorWeight: 3,
                     labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    tabs: markets.map<Widget>((m) => Tab(text: '${marketFlag(m.name)} ${m.name}')).toList(),
+                    tabs: markets.map<Widget>((m) => Tab(text: '${marketFlag(m.name)} ${marketCode(m.name)}')).toList(),
                   ),
                 ],
               ),
@@ -409,53 +397,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: TabBarView(
               controller: _tabController,
               children: markets.map<Widget>((m) => MarketScreen(market: m)).toList(),
-            ),
-          ),
-          // ── Footer disclaimer ───────────────────────────────
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-                width: 1,
-              ),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.info_outline,
-                        size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        '${DateTime.now().year} - Developed by Hemerjit - $_version',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Calculations are estimates for informational purposes only. Actual charges may vary depending on the broker, exchange, transaction type and applicable fees.',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 10,
-                    fontStyle: FontStyle.italic,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
             ),
           ),
           // AdMob banner ad at the bottom of the screen.
