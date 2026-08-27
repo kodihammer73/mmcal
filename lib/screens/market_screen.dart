@@ -818,36 +818,46 @@ class _MarketScreenState extends State<MarketScreen> {
     // Resolve display labels (fall back to raw for unmapped ones).
     final dispLabels =
         rows.map((r) => _summaryLabels[r.label] ?? r.label).toList();
-    const itemW = 10;
-    // Dynamic value column widths: widest value + guaranteed 2-space margin
-    // (minimum fits the bordered BUY/SELL headers).
-    var buyW = 5;
-    var sellW = 6;
+
+    // Bordered ASCII table: one shared cell builder for header and data rows
+    // so every pipe aligns. Each cell guarantees >=1 space before the closing
+    // pipe; numeric values are right-aligned inside their column.
+    // Pad content within (width - 2), then always append the trailing space
+    // before the closing pipe, so values never touch '|'.
+    String cell(String content, int width, {bool right = false}) =>
+        right
+            ? '| ${content.padLeft(width - 2)} '
+            : '| ${content.padRight(width - 2)} ';
+    const gutter = 3; // 1 leading space + content + 1 trailing space
+    final itemW = dispLabels.fold<String>(
+            'Item', (m, l) => l.length > m.length ? l : m).length +
+        gutter - 1;
+    var buyW = 'BUY'.length + gutter - 1;
+    var sellW = 'SELL'.length + gutter - 1;
     for (final r in rows) {
-      final blen = formatCell(r.buy).length + 2;
-      final slen = formatCell(r.sell).length + 2;
-      if (r.buy != null && blen > buyW) buyW = blen;
-      if (r.sell != null && slen > sellW) sellW = slen;
+      if (r.buy != null && formatCell(r.buy).length > buyW) {
+        buyW = formatCell(r.buy).length;
+      }
+      if (r.sell != null && formatCell(r.sell).length > sellW) {
+        sellW = formatCell(r.sell).length;
+      }
     }
 
-    // Bordered ASCII table: each value sits inside its own | cell, which
-    // stays readable even in proportional fonts (WhatsApp etc.) and renders
-    // as a real table in Markdown-aware apps.
-    final head = '| Item${' ' * (itemW - 4)}'
-        '${hasBuy ? '| BUY${' ' * (buyW - 4)}' : ''}'
-        '${hasSell ? '| SELL${' ' * (sellW - 5)}' : ''}|';
+    final head = '${cell('Item', itemW)}'
+        '${hasBuy ? cell('BUY', buyW, right: true) : ''}'
+        '${hasSell ? cell('SELL', sellW, right: true) : ''}'
+        '|';
     b.writeln(head);
-    b.writeln('-' * head.length);
+    b.writeln('|${'-' * (head.length - 2)}|');
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       var label = dispLabels[i];
       if (label.length > itemW) label = label.substring(0, itemW);
-      var line = '| ${label.padRight(itemW - 1)}';
-      // Every row keeps all cells so the grid stays rectangular; a null
-      // value (e.g. CONTRA's SELL) renders as an empty cell.
-      line += hasBuy ? '| ${(r.buy == null ? '' : formatCell(r.buy)).padLeft(buyW - 1)}' : '';
-      line += hasSell ? '| ${(r.sell == null ? '' : formatCell(r.sell)).padLeft(sellW - 1)}' : '';
-      b.writeln('$line|');
+      final line = '${cell(label, itemW)}'
+          '${hasBuy ? cell(r.buy == null ? '' : formatCell(r.buy), buyW, right: true) : ''}'
+          '${hasSell ? cell(r.sell == null ? '' : formatCell(r.sell), sellW, right: true) : ''}'
+          '|';
+      b.writeln(line);
     }
     b.writeln('-' * head.length);
     b.writeln('Estimates only.');

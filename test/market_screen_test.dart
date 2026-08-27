@@ -203,6 +203,12 @@ void main() {
       final lines = copied!.split('\n');
       for (final l in lines) {
         if (l.trim().isEmpty) continue;
+        // Bordered rows: every cell must have >=1 space before closing pipe.
+        if (l.startsWith('|')) {
+          expect(l.endsWith('|'), isTrue, reason: 'unclosed row: "$l"');
+          expect(RegExp(r'[\w.,]\|').hasMatch(l), isFalse,
+              reason: 'value touches pipe: "$l"');
+        }
         // No dangling empty cell / trailing whitespace.
         expect(l.endsWith(' '), isFalse, reason: 'trailing spaces: "$l"');
         // No column collision even with thousands separators.
