@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../engine/engine.dart';
@@ -22,6 +23,10 @@ class MarketScreen extends StatefulWidget {
 }
 
 class _MarketScreenState extends State<MarketScreen> {
+  /// App version (e.g. "1.0.3"), fetched once via PackageInfo. Null if
+  /// unavailable, in which case the shared footer omits it.
+  String? _appVersion;
+
   final _qtyCtrl = TextEditingController();
   final _buyCtrl = TextEditingController();
   final _sellCtrl = TextEditingController();
@@ -88,6 +93,17 @@ class _MarketScreenState extends State<MarketScreen> {
   void initState() {
     super.initState();
     _loadPersistedState();
+    // Best-effort: fetch the app version once for the shared footer.
+    unawaited(_loadAppVersion());
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _appVersion = info.version);
+    } catch (_) {
+      // Not available (e.g. in tests / non-Android/iOS). Keep it null.
+    }
   }
 
   Future<void> _loadPersistedState() async {
@@ -819,50 +835,41 @@ class _MarketScreenState extends State<MarketScreen> {
     final dispLabels =
         rows.map((r) => _summaryLabels[r.label] ?? r.label).toList();
 
-    // Bordered ASCII table: one shared cell builder for header and data rows
-    // so every pipe aligns. Each cell guarantees >=1 space before the closing
-    // pipe; numeric values are right-aligned inside their column.
-    // Pad content within (width - 2), then always append the trailing space
-    // before the closing pipe, so values never touch '|'.
+    // Bordered ASCII table: one shared cell function for header and data rows
+    // so every pipe aligns. Column width = (longest cell in that column) + 2,
+    // guaranteeing one space of breathing room on each side of the content,
+    // so values never touch a pipe and thousands separators never collide.
     String cell(String content, int width, {bool right = false}) =>
         right
             ? '| ${content.padLeft(width - 2)} '
             : '| ${content.padRight(width - 2)} ';
-    const gutter = 3; // 1 leading space + content + 1 trailing space
-    final itemW = dispLabels.fold<String>(
-            'Item', (m, l) => l.length > m.length ? l : m).length +
-        gutter - 1;
-    var buyW = 'BUY'.length + gutter - 1;
-    var sellW = 'SELL'.length + gutter - 1;
-    for (final r in rows) {
-      // Cell padded area is (width - 2), so the column must be at least
-      // value length + 2 or padLeft/padRight won't fit it and rows overflow.
-      if (r.buy != null && formatCell(r.buy).length + 2 > buyW) {
-        buyW = formatCell(r.buy).length + 2;
-      }
-      if (r.sell != null && formatCell(r.sell).length + 2 > sellW) {
-        sellW = formatCell(r.sell).length + 2;
-      }
-    }
+
+    int maxOf(List<String> c) =>
+        c.fold<String>('', (m, s) => s.length > m.length ? s : m).length;
+    final itemW = maxOf(['Item', ...dispLabels]) + 2;
+    final buyW = hasBuy ? maxOf(['BUY', for (final r in rows) formatCell(r.buy)]) + 2 : 0;
+    final sellW = hasSell ? maxOf(['SELL', for (final r in rows) formatCell(r.sell)]) + 2 : 0;
 
     final head = '${cell('Item', itemW)}'
         '${hasBuy ? cell('BUY', buyW, right: true) : ''}'
         '${hasSell ? cell('SELL', sellW, right: true) : ''}'
         '|';
     b.writeln(head);
-    b.writeln('|${'-' * (head.length - 2)}|');
+    b.writeln(head.replaceAll(RegExp(r'[^\|]'), '-'));
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       var label = dispLabels[i];
-      if (label.length > itemW) label = label.substring(0, itemW);
+      if (label.length > itemW - 2) label = label.substring(0, itemW - 2);
       final line = '${cell(label, itemW)}'
           '${hasBuy ? cell(r.buy == null ? '' : formatCell(r.buy), buyW, right: true) : ''}'
           '${hasSell ? cell(r.sell == null ? '' : formatCell(r.sell), sellW, right: true) : ''}'
           '|';
       b.writeln(line);
     }
-    b.writeln('-' * head.length);
+    b.writeln(head.replaceAll(RegExp(r'[^\|]'), '-'));
     b.writeln('Estimates only.');
+    b.writeln('\u2014');
+    b.writeln('MMCal v${_appVersion ?? '\u2014'} \u00b7 \u00a9 ${DateTime.now().year} Hemerjit');
     return b.toString();
   }
 
@@ -942,7 +949,7 @@ class _MarketScreenState extends State<MarketScreen> {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  '${DateTime.now().year} - Developed by Hemerjit',
+                                  '${DateTime.now().year} · Developed by Hemerjit · v${_appVersion ?? ''}',
                   style: TextStyle(
                       color: theme.colorScheme.onSurface, fontSize: 12, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,

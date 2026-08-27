@@ -200,6 +200,13 @@ void main() {
       expect(copied, isNot(contains('Proceeds')));
       expect(copied, contains('TOTAL'));
       expect(copied, contains('CONTRA'));
+      // Footer + disclaimer present in the shared text.
+      expect(copied, contains('Estimates only.'));
+      expect(copied, contains('Hemerjit'));
+      expect(RegExp(r'MMCal v').hasMatch(copied!), isTrue,
+          reason: 'missing footer brand: "$copied"');
+      expect(RegExp(r'© \d{4}').hasMatch(copied!), isTrue,
+          reason: 'missing copyright year: "$copied"');
       final lines = copied!.split('\n');
       // Track the first bordered row's width so all others can be compared.
       int? rowLen;
