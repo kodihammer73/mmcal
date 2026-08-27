@@ -201,13 +201,21 @@ void main() {
       expect(copied, contains('TOTAL'));
       expect(copied, contains('CONTRA'));
       final lines = copied!.split('\n');
+      // Track the first bordered row's width so all others can be compared.
+      int? rowLen;
       for (final l in lines) {
         if (l.trim().isEmpty) continue;
         // Bordered rows: every cell must have >=1 space before closing pipe.
         if (l.startsWith('|')) {
+          rowLen ??= l.length;
           expect(l.endsWith('|'), isTrue, reason: 'unclosed row: "$l"');
           expect(RegExp(r'[\w.,]\|').hasMatch(l), isFalse,
               reason: 'value touches pipe: "$l"');
+          // All bordered rows (incl. header/divider) must be equal length —
+          // guards against column overflow breaking alignment.
+          expect(l.length, rowLen, reason: 'row width mismatch: "$l"');
+        } else if (l.startsWith('-')) {
+          expect(l.length, rowLen, reason: 'divider width mismatch: "$l"');
         }
         // No dangling empty cell / trailing whitespace.
         expect(l.endsWith(' '), isFalse, reason: 'trailing spaces: "$l"');

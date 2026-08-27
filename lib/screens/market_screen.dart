@@ -835,11 +835,13 @@ class _MarketScreenState extends State<MarketScreen> {
     var buyW = 'BUY'.length + gutter - 1;
     var sellW = 'SELL'.length + gutter - 1;
     for (final r in rows) {
-      if (r.buy != null && formatCell(r.buy).length > buyW) {
-        buyW = formatCell(r.buy).length;
+      // Cell padded area is (width - 2), so the column must be at least
+      // value length + 2 or padLeft/padRight won't fit it and rows overflow.
+      if (r.buy != null && formatCell(r.buy).length + 2 > buyW) {
+        buyW = formatCell(r.buy).length + 2;
       }
-      if (r.sell != null && formatCell(r.sell).length > sellW) {
-        sellW = formatCell(r.sell).length;
+      if (r.sell != null && formatCell(r.sell).length + 2 > sellW) {
+        sellW = formatCell(r.sell).length + 2;
       }
     }
 
