@@ -868,8 +868,6 @@ class _MarketScreenState extends State<MarketScreen> {
     }
     b.writeln(head.replaceAll(RegExp(r'[^\|]'), '-'));
     b.writeln('Estimates only.');
-    b.writeln('\u2014');
-    b.writeln('MMCal v${_appVersion ?? '\u2014'} \u00b7 \u00a9 ${DateTime.now().year} Hemerjit');
     return b.toString();
   }
 

@@ -200,13 +200,14 @@ void main() {
       expect(copied, isNot(contains('Proceeds')));
       expect(copied, contains('TOTAL'));
       expect(copied, contains('CONTRA'));
-      // Footer + disclaimer present in the shared text.
+      // Disclaimer present, but the branding footer is intentionally NOT in
+      // the shared text (only the on-screen footer carries the version).
       expect(copied, contains('Estimates only.'));
-      expect(copied, contains('Hemerjit'));
-      expect(RegExp(r'MMCal v').hasMatch(copied!), isTrue,
-          reason: 'missing footer brand: "$copied"');
-      expect(RegExp(r'© \d{4}').hasMatch(copied!), isTrue,
-          reason: 'missing copyright year: "$copied"');
+      expect(copied, isNot(contains('Hemerjit')));
+      expect(RegExp(r'MMCal v').hasMatch(copied!), isFalse,
+          reason: 'footer brand should not be in shared text: "$copied"');
+      expect(RegExp(r'© \d{4}').hasMatch(copied!), isFalse,
+          reason: 'copyright should not be in shared text: "$copied"');
       final lines = copied!.split('\n');
       // Track the first bordered row's width so all others can be compared.
       int? rowLen;
