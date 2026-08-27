@@ -184,7 +184,7 @@ void main() {
         },
       );
       await tester.pumpWidget(_wrap());
-      await tester.enterText(find.widgetWithText(TextField, 'Quantity'), '100');
+      await tester.enterText(find.widgetWithText(TextField, 'Quantity'), '10000');
       await tester.enterText(find.widgetWithText(TextField, 'Buy Price (MYR)'), '1.50');
       await tester.enterText(find.widgetWithText(TextField, 'Sell Price (MYR)'), '1.60');
       await tester.pump();
@@ -195,11 +195,20 @@ void main() {
       expect(copied, isNotNull);
       expect(copied, contains('BUY'));
       expect(copied, contains('SELL'));
+      // Shortened labels per user spec.
+      expect(copied, contains('Gross'));
+      expect(copied, isNot(contains('Proceeds')));
+      expect(copied, contains('TOTAL'));
+      expect(copied, contains('CONTRA'));
       final lines = copied!.split('\n');
       for (final l in lines) {
-        if (l.contains('Estimates')) continue;
         if (l.trim().isEmpty) continue;
-        expect(l.length, lessThanOrEqualTo(33), reason: 'line wraps: "$l"');
+        // No dangling empty cell / trailing whitespace.
+        expect(l.endsWith(' '), isFalse, reason: 'trailing spaces: "$l"');
+        // No column collision even with thousands separators.
+        expect(RegExp(r'\d\.\d{2}[1-9]').hasMatch(l), isFalse,
+            reason: 'cells collide: "$l"');
+        expect(l.length, lessThanOrEqualTo(38), reason: 'line wraps: "$l"');
       }
     });
 

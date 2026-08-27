@@ -762,6 +762,34 @@ class _MarketScreenState extends State<MarketScreen> {
   /// copy/share. Header line mirrors the on-screen table columns.
   /// Renders the results as a compact, aligned plain-text summary for
   /// copy/share. Header line mirrors the on-screen table columns.
+  /// Shortened item labels used only in the copy/share summary text
+  /// (the on-screen table keeps full names).
+  static const Map<String, String> _summaryLabels = {
+    'Proceeds': 'Gross',
+    'Brokerage': 'Brkg',
+    'Local Brokerage': 'L/Brkg',
+    'Foreign Brokerage': 'F/Brkg',
+    'Stamp Duty': 'S/Dty',
+    'Local Stamp Duty': 'LS/Dty',
+    'Foreign Stamp Duty': 'FS/Dty',
+    'Clearing Fee': 'C/Fee',
+    'Local Clearing Fee': 'LC/Fee',
+    'Trading Fee': 'T/Fee',
+    'CCASS Fee': 'CCASS',
+    'Levy Fee': 'Levy',
+    'IB Charges': 'IB/Fees',
+    'SST - Brokerage': 'SST Brk',
+    'GST - Brokerage': 'GST Brk',
+    'SST - Clearing Fee': 'SST C/F',
+    'GST - Clearing Fee': 'GST C/F',
+    'GST - Foreign Brokerage': 'GST FBrk',
+    'GST - IB Charges': 'GST IB',
+    'DF Interest': 'DF/Int',
+    'DF Fees': 'DF Fee',
+    'GST - DF Fees': 'GST DF',
+    'TOTAL': 'TOTAL',
+    'Contra P&L': 'CONTRA',
+  };
   /// Builds a shareable/copyable plain-text summary.
   ///
   /// Adaptive columns: only the columns the user actually entered are shown
@@ -772,35 +800,56 @@ class _MarketScreenState extends State<MarketScreen> {
     final hasBuy = rows.any((r) => r.buy != null);
     final hasSell = rows.any((r) => r.sell != null);
     final b = StringBuffer();
-    b.writeln('${marketFlag(market.name)} ${market.name} - '
-        '${_isOnline ? 'Online' : 'Offline'}');
     final qty = _qtyCtrl.text;
     final buyTxt = _buyCtrl.text.isNotEmpty ? _buyCtrl.text : '-';
     final sellTxt = _sellCtrl.text.isNotEmpty ? _sellCtrl.text : '-';
+    const sep = ' · ';
+    b.writeln('${marketFlag(market.name)} ${market.name}$sep'
+        '${_isOnline ? 'Online' : 'Offline'}');
     if (hasBuy && hasSell) {
-      b.writeln('Qty $qty - $buyTxt/$sellTxt ${market.currency}');
+      b.writeln('Qty $qty$sep$buyTxt/$sellTxt ${market.currency}');
     } else if (hasBuy) {
-      b.writeln('Qty $qty - $buyTxt ${market.currency}');
+      b.writeln('Qty $qty$sep$buyTxt ${market.currency}');
     } else {
-      b.writeln('Qty $qty - $sellTxt ${market.currency}');
+      b.writeln('Qty $qty$sep$sellTxt ${market.currency}');
     }
     b.writeln();
-    final head = 'Item'.padRight(15) +
-        (hasBuy ? 'BUY'.padLeft(8) : '') +
-        (hasSell ? 'SELL'.padLeft(8) : '');
+
+    // Resolve display labels (fall back to raw for unmapped ones).
+    final dispLabels =
+        rows.map((r) => _summaryLabels[r.label] ?? r.label).toList();
+    const itemW = 13;
+    // Dynamic value column widths: widest value + guaranteed 2-space margin.
+    var buyW = 3;
+    var sellW = 4;
+    for (final r in rows) {
+      final blen = formatCell(r.buy).length + 2;
+      final slen = formatCell(r.sell).length + 2;
+      if (r.buy != null && blen > buyW) buyW = blen;
+      if (r.sell != null && slen > sellW) sellW = slen;
+    }
+
+    final head = 'Item'.padRight(itemW) +
+        (hasBuy ? 'BUY'.padLeft(buyW) : '') +
+        (hasSell ? 'SELL'.padLeft(sellW) : '');
     b.writeln(head);
     b.writeln('-' * head.length);
-    for (final r in rows) {
-      final label = r.label.length > 16 ? '..' : r.label;
-      final line = label.padRight(15) +
-          (hasBuy ? formatCell(r.buy).padLeft(8) : '') +
-          (hasSell ? formatCell(r.sell).padLeft(8) : '');
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
+      var label = dispLabels[i];
+      if (label.length > itemW) label = label.substring(0, itemW);
+      var line = label.padRight(itemW);
+      // Null cells are omitted entirely (no dangling empty column / trailing
+      // whitespace, e.g. on the CONTRA row).
+      if (r.buy != null) line += formatCell(r.buy).padLeft(buyW);
+      if (r.sell != null) line += formatCell(r.sell).padLeft(sellW);
       b.writeln(line);
     }
     b.writeln('-' * head.length);
-    b.writeln('Estimates only - actual charges may vary.');
+    b.writeln('Estimates only.');
     return b.toString();
   }
+
   static String formatCell(double? v) =>
       v == null ? '' : _numFmt.format(v);
   Future<void> _copySummary(List<_Row> rows) async {
