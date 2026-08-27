@@ -818,10 +818,11 @@ class _MarketScreenState extends State<MarketScreen> {
     // Resolve display labels (fall back to raw for unmapped ones).
     final dispLabels =
         rows.map((r) => _summaryLabels[r.label] ?? r.label).toList();
-    const itemW = 13;
-    // Dynamic value column widths: widest value + guaranteed 2-space margin.
-    var buyW = 3;
-    var sellW = 4;
+    const itemW = 10;
+    // Dynamic value column widths: widest value + guaranteed 2-space margin
+    // (minimum fits the bordered BUY/SELL headers).
+    var buyW = 5;
+    var sellW = 6;
     for (final r in rows) {
       final blen = formatCell(r.buy).length + 2;
       final slen = formatCell(r.sell).length + 2;
@@ -829,21 +830,24 @@ class _MarketScreenState extends State<MarketScreen> {
       if (r.sell != null && slen > sellW) sellW = slen;
     }
 
-    final head = 'Item'.padRight(itemW) +
-        (hasBuy ? 'BUY'.padLeft(buyW) : '') +
-        (hasSell ? 'SELL'.padLeft(sellW) : '');
+    // Bordered ASCII table: each value sits inside its own | cell, which
+    // stays readable even in proportional fonts (WhatsApp etc.) and renders
+    // as a real table in Markdown-aware apps.
+    final head = '| Item${' ' * (itemW - 4)}'
+        '${hasBuy ? '| BUY${' ' * (buyW - 4)}' : ''}'
+        '${hasSell ? '| SELL${' ' * (sellW - 5)}' : ''}|';
     b.writeln(head);
     b.writeln('-' * head.length);
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       var label = dispLabels[i];
       if (label.length > itemW) label = label.substring(0, itemW);
-      var line = label.padRight(itemW);
-      // Null cells are omitted entirely (no dangling empty column / trailing
-      // whitespace, e.g. on the CONTRA row).
-      if (r.buy != null) line += formatCell(r.buy).padLeft(buyW);
-      if (r.sell != null) line += formatCell(r.sell).padLeft(sellW);
-      b.writeln(line);
+      var line = '| ${label.padRight(itemW - 1)}';
+      // Every row keeps all cells so the grid stays rectangular; a null
+      // value (e.g. CONTRA's SELL) renders as an empty cell.
+      line += hasBuy ? '| ${(r.buy == null ? '' : formatCell(r.buy)).padLeft(buyW - 1)}' : '';
+      line += hasSell ? '| ${(r.sell == null ? '' : formatCell(r.sell)).padLeft(sellW - 1)}' : '';
+      b.writeln('$line|');
     }
     b.writeln('-' * head.length);
     b.writeln('Estimates only.');
