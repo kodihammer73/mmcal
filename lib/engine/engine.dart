@@ -104,7 +104,6 @@ abstract class Market {
     double rate = s.get(rateKey);
     double sd = rmgross * (rate / 100);
     if (sd < s.get('minstampduty')) sd = s.get('minstampduty');
-    if (sd > s.get('maxstampduty')) sd = s.get('maxstampduty');
     int valueB = sd.truncate();
     if (valueB < sd - 1e-5) sd = (valueB + 1).toDouble();
     return sd;
@@ -115,7 +114,6 @@ abstract class Market {
     double rate = s.get(rateKey);
     double sd = rmgross * (rate / 100);
     if (sd < s.get('minstampduty')) sd = s.get('minstampduty');
-    if (sd > s.get('maxstampduty')) sd = s.get('maxstampduty');
     return round2dp(sd);
   }
 }

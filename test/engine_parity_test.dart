@@ -108,6 +108,17 @@ void main() {
       check('stampduty_raw (RM)', calc.get('stampduty_raw'), 165.00);
       check('stampduty (RM)', calc.get('stampduty'), 165);
     });
+
+    test('Test 16: SG un-capped stamp duty (no RM200 max)', () {
+      final calc = sg.calculate(mode: 5, buysel: 2, flag: 0, qty: 20000, price: 4.29, rate: 3.124);
+      check('stampduty_raw (RM)', calc.get('stampduty_raw'), 268.04);
+      check('stampduty (RM)', calc.get('stampduty'), 269);
+      final sgdSd = (calc.get('stampduty') / 3.124 * 100).ceilToDouble() / 100;
+      check('stampduty (SGD, ceil whole_rm/rate)', sgdSd, 86.11);
+      check('ibcharges (SGD)', calc.get('ibcharges'), 300.61);
+      check('val1 (MYR)', calc.get('val1'), 266858.80);
+      check('val2 (SGD)', calc.get('val2'), 85398.81);
+    });
   });
 
   group('Hong Kong Market', () {
