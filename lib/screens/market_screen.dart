@@ -16,6 +16,12 @@ final _numFmt = NumberFormat('#,##0.00');
 // totals like 1,234.56 don't overflow / truncate on narrow mobile screens.
 final _compactFmt = NumberFormat.compact(locale: 'en_US');
 
+/// Horizontal inset (px) of the results columns from the screen edge, matching
+/// how the results card is nested so the sticky bottom bar can align its BUY /
+/// SELL totals under the same columns as the results table above.
+/// = scroll padding (12) + Card margin (4) + card padding (12) + row padding (8).
+const double _resultColInset = 36.0;
+
 class MarketScreen extends StatefulWidget {
   final Market market;
   const MarketScreen({super.key, required this.market});
@@ -347,29 +353,40 @@ class _MarketScreenState extends State<MarketScreen> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.fromLTRB(_resultColInset, 10, _resultColInset, 10),
           child: Row(
             children: [
-              Icon(Icons.summarize, size: 18,
-                  color: isDark ? AppColors.totalDark : AppColors.totalLight),
-              const SizedBox(width: 8),
-              Text('TOTAL',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
-              Text(totalCurr,
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              const Spacer(),
-              Flexible(
-                fit: FlexFit.loose,
+              // Leading half mirrors the table's Item/Curr/Rate columns (flex 6
+              // of 12) so the totals below start under the same BUY / SELL
+              // columns as the results table above.
+              Expanded(
+                flex: 6,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Icon(Icons.summarize, size: 18,
+                        color: isDark ? AppColors.totalDark : AppColors.totalLight),
+                    const SizedBox(width: 8),
+                    Text('TOTAL',
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 8),
+                    Text(totalCurr,
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              // BUY column (flex 3) — aligns under the table's BUY column.
+              Expanded(
+                flex: 3,
                 child: Text(buyTotal == null ? '—' : _formatCompact(buyTotal),
                     textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold, color: buyColor)),
               ),
-              const SizedBox(width: 12),
-              Flexible(
-                fit: FlexFit.loose,
+              // SELL column (flex 3) — aligns under the table's SELL column.
+              Expanded(
+                flex: 3,
                 child: Text(sellTotal == null ? '—' : _formatCompact(sellTotal),
                     textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
@@ -1330,7 +1347,9 @@ class _ResultRow extends StatelessWidget {
     final sellColor = isDark ? AppColors.sellDark : AppColors.sellLight;
     final totalColor = isDark ? AppColors.totalDark : AppColors.totalLight;
 
-    String withCurr(double? v) => v == null ? '' : '${row.curr} ${_numFmt.format(v)}';
+    // Amount cells show the plain number only; the currency code is already
+    // shown in the dedicated 'Curr' column, so no per-amount prefix.
+    String num(double? v) => v == null ? '' : _numFmt.format(v);
 
     Color? cellColor(double? v, bool isBuy) {
       if (v == null) return null;
@@ -1379,8 +1398,8 @@ class _ResultRow extends StatelessWidget {
           ),
           Expanded(flex: 1, child: Text(row.curr, style: theme.textTheme.bodySmall)),
           Expanded(flex: 2, child: Text(row.rate, style: theme.textTheme.bodySmall, textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text(withCurr(row.buy), style: cellStyle(row.buy, true), textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text(withCurr(row.sell), style: cellStyle(row.sell, false), textAlign: TextAlign.right)),
+          Expanded(flex: 3, child: Text(num(row.buy), style: cellStyle(row.buy, true), textAlign: TextAlign.right)),
+          Expanded(flex: 3, child: Text(num(row.sell), style: cellStyle(row.sell, false), textAlign: TextAlign.right)),
         ],
       ),
     );
