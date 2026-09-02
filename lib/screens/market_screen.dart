@@ -12,6 +12,9 @@ import '../services/form_state.dart';
 import '../ui/branding.dart';
 
 final _numFmt = NumberFormat('#,##0.00');
+// Compact readouts for tight spaces (e.g. the sticky TOTAL bar) so large
+// totals like 1,234.56 don't overflow / truncate on narrow mobile screens.
+final _compactFmt = NumberFormat.compact(locale: 'en_US');
 
 class MarketScreen extends StatefulWidget {
   final Market market;
@@ -287,6 +290,38 @@ class _MarketScreenState extends State<MarketScreen> {
     super.dispose();
   }
 
+  /// Formats a value for the tight sticky TOTAL bar: large totals get a
+  /// compact form (e.g. 1,234.56 -> "1.2k") so the row never truncates on
+  /// narrow screens, smaller totals keep full precision.
+  String _formatCompact(double v) {
+    final full = _numFmt.format(v);
+    if (full.length > 11) {
+      var compact = _compactFmt.format(v);
+      if (compact.endsWith('.0')) {
+        compact = compact.substring(0, compact.length - 2);
+      }
+      return compact;
+    }
+    return full;
+  }
+
+  /// Auto-calc while typing only when the value is a *parseable, positive*
+  /// number. This prevents intermediate keystrokes (e.g. typing '.', '.5',
+  /// '0.', or clearing) from triggering a rebuild that resets focus / the
+  /// scroll position — the field refreshes and the user has to re-navigate
+  /// mid-edit. Intermediate forms are tolerated; a complete valid value
+  /// (e.g. "0.512") schedules the debounced recalc as normal.
+  void _maybeAutoCalc(String val) {
+    final n = double.tryParse(val);
+    setState(() {
+      _recalcPending = _hasResults && (n == null || n > 0);
+    });
+    if (n != null && n > 0) {
+      _scheduleAutoCalc();
+    }
+    _schedulePersist();
+  }
+
   /// Sticky bar pinned to the bottom of the screen summarising the TOTAL for
   /// BUY / SELL so the key figure stays visible while scrolling (see #9).
   Widget _stickyTotalBar(bool isMalaysia, bool isForeign) {
@@ -325,14 +360,18 @@ class _MarketScreenState extends State<MarketScreen> {
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               const Spacer(),
               Flexible(
-                child: Text(buyTotal == null ? 'BUY —' : 'BUY ${_numFmt.format(buyTotal)}',
+                fit: FlexFit.loose,
+                child: Text(buyTotal == null ? '—' : _formatCompact(buyTotal),
+                    textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold, color: buyColor)),
               ),
               const SizedBox(width: 12),
               Flexible(
-                child: Text(sellTotal == null ? 'SELL —' : 'SELL ${_numFmt.format(sellTotal)}',
+                fit: FlexFit.loose,
+                child: Text(sellTotal == null ? '—' : _formatCompact(sellTotal),
+                    textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold, color: sellColor)),
@@ -519,11 +558,11 @@ class _MarketScreenState extends State<MarketScreen> {
                 Row(children: [
                   Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.shopping_cart, size: 18),
                     onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                    onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
+                    onChanged: (v) => _maybeAutoCalc(v))),
                   const SizedBox(width: 8),
                   Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.sell, size: 18),
                       onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                      onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
+                      onChanged: (v) => _maybeAutoCalc(v))),
                 ]),
                 const SizedBox(height: 8),
                 // Row 3: Buy / Sell rate (foreign only)
@@ -531,12 +570,12 @@ class _MarketScreenState extends State<MarketScreen> {
                   Row(children: [
                     Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), hintText: '1.0',
                         onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                        onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
+                        onChanged: (v) => _maybeAutoCalc(v))),
                     const SizedBox(width: 8),
                     Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), hintText: '1.0',
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                        onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
+                        onChanged: (v) => _maybeAutoCalc(v))),
                   ]),
                   const SizedBox(height: 8),
                 ],
