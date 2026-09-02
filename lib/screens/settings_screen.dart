@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../config/settings.dart';
 import '../ui/branding.dart';
 
@@ -11,6 +14,10 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final Map<String, TextEditingController> _ctrls = {};
+
+  /// App version (e.g. "1.0.3"), fetched once via PackageInfo. Null if
+  /// unavailable, in which case the footer attribution omits it.
+  String? _appVersion;
 
   static const _groups = [
     _Group('General', [
@@ -109,6 +116,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _ctrls[f.key] = TextEditingController(text: s.get(f.key).toString());
       }
     }
+    // Best-effort: fetch the app version once for the footer attribution.
+    unawaited(_loadAppVersion());
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _appVersion = info.version);
+    } catch (_) {
+      // Not available (e.g. in tests / non-Android/iOS). Keep it null.
+    }
   }
 
   @override
@@ -185,7 +203,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
-        children: _groups.map((g) => _buildGroup(g)).toList(),
+        children: [
+          ..._groups.map((g) => _buildGroup(g)),
+          const SizedBox(height: 8),
+          _buildAttribution(),
+        ],
+      ),
+    );
+  }
+
+  /// Bottom attribution line (moved here from the market results footer).
+  Widget _buildAttribution() {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, size: 14, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '${DateTime.now().year} · Developed by Hemerjit · v${_appVersion ?? ''}',
+              style: TextStyle(
+                  color: theme.colorScheme.onSurface, fontSize: 12, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }

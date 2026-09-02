@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand splash colour used by launch_background so the native launch
+         screen hands off seamlessly into the Flutter splash gradient. -->
+    <color name="launch_background_color">#0D2A66</color>
+</resources>

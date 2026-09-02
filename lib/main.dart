@@ -8,6 +8,7 @@ import 'config/settings.dart';
 import 'markets/market_registry.dart';
 import 'screens/market_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/update_required_screen.dart';
 import 'services/admob_service.dart';
 import 'services/form_state.dart';
@@ -63,6 +64,10 @@ class _MMCalAppState extends State<MMCalApp> {
 
   /// Holds the update-check result. Null while the check is in progress.
   UpdateCheckResult? _updateResult;
+
+  // Whether the branded splash is still showing. Flipped to false after a
+  // short delay so the splash fades into the real UI.
+  bool _showSplash = true;
 
   @override
   void initState() {
@@ -192,12 +197,18 @@ class _MMCalAppState extends State<MMCalApp> {
       themeMode: _themeMode,
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
-      home: _updateResult?.updateRequired == true
-          ? UpdateRequiredScreen(result: _updateResult!)
-          : HomeScreen(
-              themeMode: _themeMode,
-              onCycleThemeMode: _cycleThemeMode,
-            ),
+      home: _showSplash
+          ? SplashScreen(
+              onFinished: () {
+                if (mounted) setState(() => _showSplash = false);
+              },
+            )
+          : _updateResult?.updateRequired == true
+              ? UpdateRequiredScreen(result: _updateResult!)
+              : HomeScreen(
+                  themeMode: _themeMode,
+                  onCycleThemeMode: _cycleThemeMode,
+                ),
     );
   }
 }

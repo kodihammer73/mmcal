@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../engine/engine.dart';
@@ -23,10 +22,6 @@ class MarketScreen extends StatefulWidget {
 }
 
 class _MarketScreenState extends State<MarketScreen> {
-  /// App version (e.g. "1.0.3"), fetched once via PackageInfo. Null if
-  /// unavailable, in which case the shared footer omits it.
-  String? _appVersion;
-
   final _qtyCtrl = TextEditingController();
   final _buyCtrl = TextEditingController();
   final _sellCtrl = TextEditingController();
@@ -41,6 +36,13 @@ class _MarketScreenState extends State<MarketScreen> {
 
   // Debounced persistence so we don't hammer SharedPreferences on every key.
   Timer? _persistTimer;
+
+  // Debounced live re-calculation while typing prices/rates (see #1).
+  Timer? _autoCalcTimer;
+
+  // True when inputs changed after results were last calculated, so the UI can
+  // flag that results are stale/updating (see #2).
+  bool _recalcPending = false;
 
   // Incremented on every calculate to re-key the results animation.
   int _formSeq = 0;
@@ -92,29 +94,27 @@ class _MarketScreenState extends State<MarketScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPersistedState();
-    // Best-effort: fetch the app version once for the shared footer.
-    unawaited(_loadAppVersion());
-  }
-
-  Future<void> _loadAppVersion() async {
-    try {
-      final info = await PackageInfo.fromPlatform();
-      if (mounted) setState(() => _appVersion = info.version);
-    } catch (_) {
-      // Not available (e.g. in tests / non-Android/iOS). Keep it null.
+    // Foreign markets start with an empty exchange rate so the user enters the
+    // real rate directly instead of clearing the default 1.0. Malaysia keeps 1.0.
+    if (widget.market is! MalaysiaMarket) {
+      _buyRateCtrl.text = '';
+      _sellRateCtrl.text = '';
     }
+    _loadPersistedState();
   }
 
   Future<void> _loadPersistedState() async {
     final saved = await FormStateStore.load(widget.market.name);
     if (!mounted) return;
     setState(() {
+      final isMalaysia = widget.market is MalaysiaMarket;
       _qtyCtrl.text = saved['qty'] as String? ?? '';
       _buyCtrl.text = saved['buy'] as String? ?? '';
       _sellCtrl.text = saved['sell'] as String? ?? '';
-      _buyRateCtrl.text = saved['buyRate'] as String? ?? '1.0';
-      _sellRateCtrl.text = saved['sellRate'] as String? ?? '1.0';
+      // Default rates: 1.0 for Malaysia (locked); empty for foreign markets so
+      // the user enters the real exchange rate instead of clearing 1.0.
+      _buyRateCtrl.text = saved['buyRate'] as String? ?? (isMalaysia ? '1.0' : '');
+      _sellRateCtrl.text = saved['sellRate'] as String? ?? (isMalaysia ? '1.0' : '');
       _brkrateCtrl.text = saved['brkrate'] as String? ?? '0';
       _dfDaysCtrl.text = saved['dfDays'] as String? ?? '5';
       _flagMinRm = (saved['flagMinRm'] as num?)?.toInt() ?? 0;
@@ -155,6 +155,16 @@ class _MarketScreenState extends State<MarketScreen> {
 
   Future<void> _persistNow() async {
     await FormStateStore.save(widget.market.name, _collectState());
+  }
+
+  /// Debounced live recalculation while typing prices/rates. Uses the same
+  /// guards as [_autoCalculate], so it no-ops when the quantity is missing.
+  void _scheduleAutoCalc() {
+    _autoCalcTimer?.cancel();
+    _autoCalcTimer = Timer(const Duration(milliseconds: 400), () {
+      _autoCalcTimer = null;
+      _autoCalculate();
+    });
   }
 
   /// Scrolls the results card into view (post-frame so it exists after the
@@ -217,6 +227,8 @@ class _MarketScreenState extends State<MarketScreen> {
         _dfBuy = mm.dfAcCalculate(mode: mode, buysel: 1, flag: flag, qty: qty, price: buy, rate: buyRate, brkrate: brkrate, noday: _dfDays, minBrkOverride: minBrkOverride);
       }
       _formSeq++;
+      _recalcPending = false;
+      _autoCalcTimer?.cancel();
     });
     _schedulePersist();
     _scrollToResults();
@@ -233,12 +245,13 @@ class _MarketScreenState extends State<MarketScreen> {
     // Dismiss the keyboard when Clear is pressed.
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
+      final isMalaysia = widget.market is MalaysiaMarket;
 
       _qtyCtrl.clear();
       _buyCtrl.clear();
       _sellCtrl.clear();
-      _buyRateCtrl.text = '1.0';
-      _sellRateCtrl.text = '1.0';
+      _buyRateCtrl.text = isMalaysia ? '1.0' : '';
+      _sellRateCtrl.text = isMalaysia ? '1.0' : '';
       _brkrateCtrl.text = '0';
       _dfDaysCtrl.text = '5';
       _isOnline = true;
@@ -252,6 +265,8 @@ class _MarketScreenState extends State<MarketScreen> {
       _buy = null;
       _sell = null;
       _dfBuy = null;
+      _recalcPending = false;
+      _autoCalcTimer?.cancel();
     });
     _persistTimer?.cancel();
     FormStateStore.clear(widget.market.name);
@@ -260,6 +275,7 @@ class _MarketScreenState extends State<MarketScreen> {
   @override
   void dispose() {
     _persistTimer?.cancel();
+    _autoCalcTimer?.cancel();
     _scrollController.dispose();
     _qtyCtrl.dispose();
     _buyCtrl.dispose();
@@ -271,18 +287,177 @@ class _MarketScreenState extends State<MarketScreen> {
     super.dispose();
   }
 
+  /// Sticky bar pinned to the bottom of the screen summarising the TOTAL for
+  /// BUY / SELL so the key figure stays visible while scrolling (see #9).
+  Widget _stickyTotalBar(bool isMalaysia, bool isForeign) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cur = widget.market.currency;
+    final totalCurr = _settleLocal ? cur : 'MYR';
+    final buyColor = isDark ? AppColors.buyDark : AppColors.buyLight;
+    final sellColor = isDark ? AppColors.sellDark : AppColors.sellLight;
+
+    double? buyTotal, sellTotal;
+    if (_settleLocal) {
+      buyTotal = _gv(_buy, 'val2', 'val2');
+      sellTotal = _gv(_sell, 'val2', 'val2');
+    } else {
+      buyTotal = _dfBuy?['total'] ?? _gv(_buy, 'val1', 'net_value');
+      sellTotal = _gv(_sell, 'val1', 'net_value');
+    }
+
+    return Material(
+      elevation: 8,
+      color: theme.colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.summarize, size: 18,
+                  color: isDark ? AppColors.totalDark : AppColors.totalLight),
+              const SizedBox(width: 8),
+              Text('TOTAL',
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 8),
+              Text(totalCurr,
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              const Spacer(),
+              Flexible(
+                child: Text(buyTotal == null ? 'BUY —' : 'BUY ${_numFmt.format(buyTotal)}',
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold, color: buyColor)),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(sellTotal == null ? 'SELL —' : 'SELL ${_numFmt.format(sellTotal)}',
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold, color: sellColor)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Breakeven is offered once the form is valid AND a buy price is present
+  /// (breakeven finds the sell price that covers your buy costs).
+  bool get _breakevenEnabled {
+    if (_error != null) return false;
+    final buy = double.tryParse(_buyCtrl.text) ?? 0;
+    return buy > 0;
+  }
+
+  /// Computes the 5 breakeven sell prices for the entered buy, then shows them
+  /// in a bottom sheet.
+  void _breakeven() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final qty = double.tryParse(_qtyCtrl.text) ?? 0;
+    final buy = double.tryParse(_buyCtrl.text) ?? 0;
+    if (qty <= 0 || buy <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a Buy price to compute breakeven.')),
+      );
+      return;
+    }
+
+    final isMalaysia = widget.market is MalaysiaMarket;
+    final buyRate = isMalaysia ? 1.0 : (double.tryParse(_buyRateCtrl.text) ?? 1.0);
+    final sellRate = isMalaysia ? 1.0 : (double.tryParse(_sellRateCtrl.text) ?? buyRate);
+    final brkrate = double.tryParse(_brkrateCtrl.text) ?? 0;
+    final flag = _flag;
+    final mode = _isOnline ? 6 : 5;
+
+    // Net buy value (RM) that the sell must cover.
+    final buyCalc = _buy ??
+        widget.market.calculate(
+            mode: mode, buysel: 1, flag: flag, qty: qty, price: buy,
+            rate: buyRate, brkrate: brkrate);
+    final buyval = _gv(buyCalc, 'val1', 'net_value') ?? 0;
+
+    final results = widget.market.breakeven(
+      buyval: buyval,
+      buyprice: buy,
+      flag: flag,
+      qty: qty,
+      mode: mode,
+      bexchrate: buyRate,
+      sexchrate: sellRate,
+      brkrate: brkrate,
+    );
+    // Effective rate the engine used (matches engine.dart: rate = sexchrate ?: bexchrate).
+    final effRate = sellRate != 0 ? sellRate : buyRate;
+    _showBreakeven(results, effRate);
+  }
+
+  void _showBreakeven(List<Map<String, double>> results, double rate) {
+    final cur = widget.market.currency;
+    // When "Sett in XXX" is ticked, show the net in the local currency (the
+    // engine always returns RM, so convert using the effective rate).
+    final dispCurr = _settleLocal ? cur : 'MYR';
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Icon(Icons.ev_station, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Text('Breakeven prices',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                ]),
+                const SizedBox(height: 4),
+                Text(
+                    'Estimated sell prices (${widget.market.currency}) at which you roughly break even on your buy. Net shown in $dispCurr.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                const SizedBox(height: 8),
+                ...results.asMap().entries.map((e) {
+                  final p = e.value['price']!;
+                  final s = e.value['selval']!;
+                  final dispVal = _settleLocal ? (rate != 0 ? s / rate : s) : s;
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Text('${e.key + 1}.',
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    title: Text('Sell @ ${_numFmt.format(p)} $cur'),
+                    trailing: Text('≈ $dispCurr ${_numFmt.format(dispVal)}',
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = widget.market;
     final isMalaysia = m is MalaysiaMarket;
     final isForeign = m.currency != 'MYR';
 
-    return SingleChildScrollView(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          controller: _scrollController,
+          padding: EdgeInsets.fromLTRB(12, 12, 12, _hasResults ? 92 : 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           // ── Section header: Trade Details ───────────────────
           _sectionHeader(Icons.tune, 'Trade Details'),
           const SizedBox(height: 8),
@@ -292,7 +467,9 @@ class _MarketScreenState extends State<MarketScreen> {
                 // Row 1: Quantity + Special Brk Rate (same row)
                 Row(children: [
                   Expanded(child: _inputField(_qtyCtrl, 'Quantity', TextInputType.number, prefix: const Icon(Icons.tag, size: 18),
-                      onChanged: (_) => setState(() {}), errorText: (double.tryParse(_qtyCtrl.text) ?? 0) <= 0 ? 'Quantity must be > 0' : null)),
+                      autofocus: true,
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                      onChanged: (_) => setState(() {}))),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -308,6 +485,7 @@ class _MarketScreenState extends State<MarketScreen> {
                         final rate = double.tryParse(val) ?? 0;
                         setState(() {
                           _flagSpecial = rate > 0;
+                          _recalcPending = _hasResults;
                         });
                         _autoCalculate();
                         _schedulePersist();
@@ -322,11 +500,13 @@ class _MarketScreenState extends State<MarketScreen> {
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: [100, 500, 1000, 5000].map((v) {
+                  children: [1000, 2000, 5000, 10000].map((v) {
                     return ActionChip(
-                      label: Text(v.toString(), style: Theme.of(context).textTheme.bodySmall),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      label: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                        child: Text(v.toString(), style: Theme.of(context).textTheme.bodyMedium),
+                      ),
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
                       onPressed: () {
                         setState(() => _qtyCtrl.text = v.toString());
                         _autoCalculate();
@@ -337,85 +517,96 @@ class _MarketScreenState extends State<MarketScreen> {
                 ),
                 // Row 2: Buy / Sell price
                 Row(children: [
-                  Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.shopping_cart, size: 18), onChanged: (_) { setState(() {}); _schedulePersist(); })),
+                  Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.shopping_cart, size: 18),
+                    onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                    onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
                   const SizedBox(width: 8),
-                  Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.sell, size: 18), onChanged: (_) { setState(() {}); _schedulePersist(); })),
+                  Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.sell, size: 18),
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                      onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
                 ]),
                 const SizedBox(height: 8),
                 // Row 3: Buy / Sell rate (foreign only)
                 if (isForeign) ...[
                   Row(children: [
-                    Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), onChanged: (_) { setState(() {}); _schedulePersist(); })),
+                    Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), hintText: '1.0',
+                        onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                        onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
                     const SizedBox(width: 8),
-                    Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), onChanged: (_) { setState(() {}); _schedulePersist(); })),
+                    Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), hintText: '1.0',
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                        onChanged: (_) { setState(() { _recalcPending = _hasResults; }); _scheduleAutoCalc(); _schedulePersist(); })),
                   ]),
                   const SizedBox(height: 8),
                 ],
 
-                const Divider(height: 16),
-                Row(
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.symmetric(vertical: 4),
+                  leading: Icon(Icons.checklist, size: 18, color: Theme.of(context).colorScheme.primary),
+                  title: Text('Options', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                  initiallyExpanded: false,
                   children: [
-                    Icon(Icons.checklist, size: 16, color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(width: 6),
-                    Text('Options', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                const SizedBox(height: 6),                // Row 4: Offline / Online / Buy / Sell (highlight only, no tick)
-                Row(children: [
-                  if (m.supportsOnline) ...[
-                    Expanded(child: _fixedChip('Offline', !_isOnline, (_) => setState(() { _isOnline = false; _autoCalculate(); }))),
-                    const SizedBox(width: 6),
-                    Expanded(child: _fixedChip('Online', _isOnline, (_) => setState(() { _isOnline = true; _autoCalculate(); }))),
-                    const SizedBox(width: 6),
-                  ],
-                  Expanded(child: _fixedChip('Buy', _buyCtrl.text.isNotEmpty, (_) {})),
-                  const SizedBox(width: 6),
-                  Expanded(child: _fixedChip('Sell', _sellCtrl.text.isNotEmpty, (_) {})),
-                ]),
-                const SizedBox(height: 8),
-                // Row 5: Options chips (Wrap so they flow into fewer lines)
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    if (m.flagMinRm12) ...[
-                      _fixedChip('MIN RM12', _flagMinRm == 12, (v) => setState(() { _flagMinRm = v! ? 12 : 0; _autoCalculate(); })),
-                      _fixedChip('MIN RM8', _flagMinRm == 8, (v) => setState(() { _flagMinRm = v! ? 8 : 0; _autoCalculate(); })),
-                    ],
-                    if (m.flagNoSduty)
-                      _fixedChip('NO S/D', _flagNoSduty, (v) => setState(() { _flagNoSduty = v!; _autoCalculate(); })),
-                    if (isMalaysia)
-                      _fixedChip('DF A/C', _dfAc, (v) => setState(() { _dfAc = v!; _autoCalculate(); })),
-                    _fixedChip('Special Rate', _flagSpecial, (v) => setState(() { _flagSpecial = v!; _autoCalculate(); })),
-                    _fixedChip('Apply GST/SST', _applyGst, (v) => setState(() { _applyGst = v!; _autoCalculate(); })),
-                    if (isForeign)
-                      _fixedChip('Sett in ${m.currency}', _settleLocal, (v) => setState(() { _settleLocal = v!; _autoCalculate(); })),
-                  ],
-                ),
-                // DF Days field (Malaysia only, shown when DF A/C ticked)
-                if (isMalaysia && _dfAc) ...[
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: 120,
-                    child: TextField(
-                      controller: _dfDaysCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'DF Days',
-                        prefixIcon: Icon(Icons.calendar_today, size: 18),
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      onChanged: (v) {
-                        final d = int.tryParse(v);
-                        if (d != null) {
-                          setState(() { _dfDays = d; });
-                          _autoCalculate();
-                        }
-                      },
+                    // Row 4: Offline / Online / Buy / Sell (highlight only, no tick)
+                    Row(children: [
+                      if (m.supportsOnline) ...[
+                        Expanded(child: _fixedChip('Offline', !_isOnline, (_) => setState(() { _isOnline = false; _autoCalculate(); }))),
+                        const SizedBox(width: 6),
+                        Expanded(child: _fixedChip('Online', _isOnline, (_) => setState(() { _isOnline = true; _autoCalculate(); }))),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(child: _fixedChip('Buy', _buyCtrl.text.isNotEmpty, (_) {})),
+                      const SizedBox(width: 6),
+                      Expanded(child: _fixedChip('Sell', _sellCtrl.text.isNotEmpty, (_) {})),
+                    ]),
+                    const SizedBox(height: 8),
+                    // Row 5: Options chips (Wrap so they flow into fewer lines)
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (m.flagMinRm12) ...[
+                          _fixedChip('MIN RM12', _flagMinRm == 12, (v) => setState(() { _flagMinRm = v! ? 12 : 0; _autoCalculate(); })),
+                          _fixedChip('MIN RM8', _flagMinRm == 8, (v) => setState(() { _flagMinRm = v! ? 8 : 0; _autoCalculate(); })),
+                        ],
+                        if (m.flagNoSduty)
+                          _fixedChip('NO S/D', _flagNoSduty, (v) => setState(() { _flagNoSduty = v!; _autoCalculate(); })),
+                        if (isMalaysia)
+                          _fixedChip('DF A/C', _dfAc, (v) => setState(() { _dfAc = v!; _autoCalculate(); })),
+                        _fixedChip('Special Rate', _flagSpecial, (v) => setState(() { _flagSpecial = v!; _autoCalculate(); })),
+                        _fixedChip('Apply GST/SST', _applyGst, (v) => setState(() { _applyGst = v!; _autoCalculate(); })),
+                        if (isForeign)
+                          _fixedChip('Sett in ${m.currency}', _settleLocal, (v) => setState(() { _settleLocal = v!; _autoCalculate(); })),
+                      ],
                     ),
-                  ),
-                ],
+                    // DF Days field (Malaysia only, shown when DF A/C ticked)
+                    if (isMalaysia && _dfAc) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: 140,
+                        child: TextField(
+                          controller: _dfDaysCtrl,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(
+                            labelText: 'DF Days',
+                            prefixIcon: Icon(Icons.calendar_today, size: 18),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          onChanged: (v) {
+                            final d = int.tryParse(v);
+                            if (d != null) {
+                              setState(() { _dfDays = d; });
+                              _autoCalculate();
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
@@ -434,6 +625,13 @@ class _MarketScreenState extends State<MarketScreen> {
                     label: const Text('Clear'),
                   ),
                 ]),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  // Breakeven: find the sell price that covers your buy costs.
+                  onPressed: _breakevenEnabled ? _breakeven : null,
+                  icon: const Icon(Icons.ev_station, size: 18),
+                  label: const Text('Breakeven'),
+                ),
               ],
             ),
           ),
@@ -469,7 +667,8 @@ class _MarketScreenState extends State<MarketScreen> {
           if (_error == null && !_hasResults) ...[
             const SizedBox(height: 12),
             _buildEmptyState(),
-          ],          // ── Results ─────────────────────────────────────────
+          ],
+          // ── Results ─────────────────────────────────────────
           if (_hasResults) ...[
             const SizedBox(height: 12),
             KeyedSubtree(
@@ -489,6 +688,20 @@ class _MarketScreenState extends State<MarketScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_recalcPending) ...[
+                      Row(
+                        children: [
+                          const SizedBox(
+                              width: 14, height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2)),
+                          const SizedBox(width: 8),
+                          Text('Recalculating…',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     _buildResults(isMalaysia, isForeign),
                     const SizedBox(height: 8),
                     _buildFooter(),
@@ -499,6 +712,15 @@ class _MarketScreenState extends State<MarketScreen> {
           ],
         ],
       ),
+      ),
+      if (_hasResults)
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _stickyTotalBar(isMalaysia, isForeign),
+        ),
+    ],
     );
   }
 
@@ -940,22 +1162,6 @@ class _MarketScreenState extends State<MarketScreen> {
       ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.info_outline, size: 14, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                                  '${DateTime.now().year} · Developed by Hemerjit · v${_appVersion ?? ''}',
-                  style: TextStyle(
-                      color: theme.colorScheme.onSurface, fontSize: 12, fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
           Text(
             'Calculations are estimates for informational purposes only. Actual charges may vary depending on the broker, exchange, transaction type and applicable fees.',
             style: TextStyle(
@@ -997,18 +1203,47 @@ class _MarketScreenState extends State<MarketScreen> {
     child: Padding(padding: const EdgeInsets.all(12), child: child),
   );
 
-  Widget _inputField(TextEditingController ctrl, String label, TextInputType type, {Widget? prefix, ValueChanged<String>? onChanged, String? errorText}) => TextField(
-    controller: ctrl,
-    keyboardType: type,
-    onChanged: onChanged,
-    decoration: InputDecoration(
-      labelText: label,
-      prefixIcon: prefix,
-      errorText: errorText,
-      isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    ),
-  );
+  Widget _inputField(
+    TextEditingController ctrl,
+    String label,
+    TextInputType type, {
+    Widget? prefix,
+    ValueChanged<String>? onChanged,
+    String? errorText,
+    String? hintText,
+    bool autofocus = false,
+    bool clearable = true,
+    TextInputAction textInputAction = TextInputAction.next,
+    ValueChanged<String>? onSubmitted,
+  }) =>
+      TextField(
+        controller: ctrl,
+        keyboardType: type,
+        autofocus: autofocus,
+        textInputAction: textInputAction,
+        onChanged: onChanged,
+        onSubmitted: onSubmitted,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: prefix,
+          errorText: errorText,
+          hintText: hintText,
+          // Field-level clear button (surfaces only when the field has text).
+          suffixIcon: clearable && ctrl.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  tooltip: 'Clear $label',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    ctrl.clear();
+                    onChanged?.call('');
+                  },
+                )
+              : null,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+      );
 
   /// Flexible toggle chip. Uses FilterChip with no checkmark so the chip
   /// only highlights when selected (no size jump / no tick).
@@ -1018,9 +1253,11 @@ class _MarketScreenState extends State<MarketScreen> {
           style: Theme.of(context).textTheme.bodySmall),
       selected: value,
       showCheckmark: false,
-      visualDensity: VisualDensity.compact,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+      // Bigger touch targets: standard density + padded tap target so the
+      // chips are comfortable to tap on a phone (see #7).
+      visualDensity: VisualDensity.standard,
+      materialTapTargetSize: MaterialTapTargetSize.padded,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       onSelected: (v) => onChanged(v),
     );
   }
@@ -1065,8 +1302,11 @@ class _ResultRow extends StatelessWidget {
 
     TextStyle? cellStyle(double? v, bool isBuy) {
       if (v == null) return theme.textTheme.bodySmall;
-      if (row.isTotal || row.isContra) {
-        return theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold, color: cellColor(v, isBuy));
+      if (row.isTotal) {
+        return theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: cellColor(v, isBuy));
+      }
+      if (row.isContra) {
+        return theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: cellColor(v, isBuy));
       }
       return theme.textTheme.bodySmall?.copyWith(color: cellColor(v, isBuy));
     }
@@ -1092,9 +1332,11 @@ class _ResultRow extends StatelessWidget {
           Expanded(
             flex: 3,
             child: Text(row.label,
-                style: row.isTotal || row.isContra
-                    ? theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)
-                    : theme.textTheme.bodySmall),
+                style: row.isTotal
+                    ? theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: cellColor(row.buy ?? row.sell, true))
+                    : row.isContra
+                        ? theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)
+                        : theme.textTheme.bodySmall),
           ),
           Expanded(flex: 1, child: Text(row.curr, style: theme.textTheme.bodySmall)),
           Expanded(flex: 2, child: Text(row.rate, style: theme.textTheme.bodySmall, textAlign: TextAlign.right)),
