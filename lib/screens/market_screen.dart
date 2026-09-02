@@ -22,6 +22,37 @@ final _compactFmt = NumberFormat.compact(locale: 'en_US');
 /// = scroll padding (12) + Card margin (4) + card padding (12) + row padding (8).
 const double _resultColInset = 36.0;
 
+/// Short, display-only labels (max ~7 chars) for the results rows so the Item
+/// column stays narrow and the amounts have room. The full labels are kept on
+/// the [_Row] objects and used for the copy/share summary text; this map is
+/// applied only at render time in the results table.
+const Map<String, String> _itemShortLabels = {
+  'Proceeds': 'Gross',
+  'Brokerage': 'Brkg',
+  'Local Brokerage': 'Brkg',
+  'Foreign Brokerage': 'F.Brkg',
+  'Stamp Duty': 'S/Duty',
+  'Local Stamp Duty': 'S/Duty',
+  'Clearing Fee': 'C/Fee',
+  'Local Clearing Fee': 'L/C.Fee',
+  'Foreign Stamp Duty': 'FS/Duty',
+  'CCASS Fee': 'CCASS',
+  'Trading Fee': 'T/Fee',
+  'Levy Fee': 'Levy',
+  'IB Charges': 'IB Fees',
+  'SST - Brokerage': 'SST Brk',
+  'GST - Brokerage': 'GST Brk',
+  'SST - Clearing Fee': 'SST C/F',
+  'GST - Clearing Fee': 'GST C/F',
+  'GST - Foreign Brokerage': 'GST FBrk',
+  'GST - IB Charges': 'GST IB',
+  'DF Interest': 'DF Int',
+  'DF Fees': 'DF Fees',
+  'GST - DF Fees': 'GST DF',
+  'TOTAL': 'TOTAL',
+  'Contra P&L': 'Contra',
+};
+
 class MarketScreen extends StatefulWidget {
   final Market market;
   const MarketScreen({super.key, required this.market});
@@ -356,11 +387,11 @@ class _MarketScreenState extends State<MarketScreen> {
           padding: const EdgeInsets.fromLTRB(_resultColInset, 10, _resultColInset, 10),
           child: Row(
             children: [
-              // Leading half mirrors the table's Item/Curr/Rate columns (flex 6
-              // of 12) so the totals below start under the same BUY / SELL
+              // Leading block mirrors the table's Item/Curr/Rate columns (flex
+              // 5 of 13) so the totals below start under the same BUY / SELL
               // columns as the results table above.
               Expanded(
-                flex: 6,
+                flex: 5,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
@@ -375,18 +406,18 @@ class _MarketScreenState extends State<MarketScreen> {
                   ],
                 ),
               ),
-              // BUY column (flex 3) — aligns under the table's BUY column.
+              // BUY column (flex 4) — aligns under the table's BUY column.
               Expanded(
-                flex: 3,
+                flex: 4,
                 child: Text(buyTotal == null ? '—' : _formatCompact(buyTotal),
                     textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold, color: buyColor)),
               ),
-              // SELL column (flex 3) — aligns under the table's SELL column.
+              // SELL column (flex 4) — aligns under the table's SELL column.
               Expanded(
-                flex: 3,
+                flex: 4,
                 child: Text(sellTotal == null ? '—' : _formatCompact(sellTotal),
                     textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
@@ -1247,9 +1278,9 @@ class _MarketScreenState extends State<MarketScreen> {
         children: [
           const Expanded(flex: 3, child: Text('Item', style: TextStyle(fontWeight: FontWeight.bold))),
           const Expanded(flex: 1, child: Text('Curr', style: TextStyle(fontWeight: FontWeight.bold))),
-          const Expanded(flex: 2, child: Text('Rate', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text('BUY', style: TextStyle(fontWeight: FontWeight.bold, color: buyColor), textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text('SELL', style: TextStyle(fontWeight: FontWeight.bold, color: sellColor), textAlign: TextAlign.right)),
+          const Expanded(flex: 1, child: Text('Rate', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+          Expanded(flex: 4, child: Text('BUY', style: TextStyle(fontWeight: FontWeight.bold, color: buyColor), textAlign: TextAlign.right)),
+          Expanded(flex: 4, child: Text('SELL', style: TextStyle(fontWeight: FontWeight.bold, color: sellColor), textAlign: TextAlign.right)),
         ],
       ),
     );
@@ -1389,7 +1420,8 @@ class _ResultRow extends StatelessWidget {
         children: [
           Expanded(
             flex: 3,
-            child: Text(row.label,
+            child: Text(_itemShortLabels[row.label] ?? row.label,
+                overflow: TextOverflow.ellipsis,
                 style: row.isTotal
                     ? theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: cellColor(row.buy ?? row.sell, true))
                     : row.isContra
@@ -1397,9 +1429,9 @@ class _ResultRow extends StatelessWidget {
                         : theme.textTheme.bodySmall),
           ),
           Expanded(flex: 1, child: Text(row.curr, style: theme.textTheme.bodySmall)),
-          Expanded(flex: 2, child: Text(row.rate, style: theme.textTheme.bodySmall, textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text(num(row.buy), style: cellStyle(row.buy, true), textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text(num(row.sell), style: cellStyle(row.sell, false), textAlign: TextAlign.right)),
+          Expanded(flex: 1, child: Text(row.rate, style: theme.textTheme.bodySmall, textAlign: TextAlign.right)),
+          Expanded(flex: 4, child: Text(num(row.buy), style: cellStyle(row.buy, true), textAlign: TextAlign.right)),
+          Expanded(flex: 4, child: Text(num(row.sell), style: cellStyle(row.sell, false), textAlign: TextAlign.right)),
         ],
       ),
     );
