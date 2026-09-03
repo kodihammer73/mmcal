@@ -67,7 +67,7 @@ class _MMCalAppState extends State<MMCalApp> {
 
   // Whether the branded splash is still showing. Flipped to false after a
   // short delay so the splash fades into the real UI.
-  bool _showSplash = true;
+  bool _showSplash = false;
 
   @override
   void initState() {
