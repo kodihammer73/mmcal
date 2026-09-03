@@ -584,23 +584,31 @@ class _MarketScreenState extends State<MarketScreen> {
 
                 // Quick quantity fill
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [1000, 2000, 5000, 10000].map((v) {
-                    return ActionChip(
-                      label: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                        child: Text(v.toString(), style: Theme.of(context).textTheme.bodyMedium),
-                      ),
-                      materialTapTargetSize: MaterialTapTargetSize.padded,
-                      onPressed: () {
-                        setState(() => _qtyCtrl.text = v.toString());
-                        _autoCalculate();
-                        _schedulePersist();
-                      },
+                LayoutBuilder(
+                  builder: (context, _) {
+                    return Row(
+                      children: [1000, 2000, 5000, 10000].map((v) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ActionChip(
+                            label: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(v.toString(), style: Theme.of(context).textTheme.bodyMedium),
+                              ),
+                            ),
+                            materialTapTargetSize: MaterialTapTargetSize.padded,
+                            onPressed: () {
+                              setState(() => _qtyCtrl.text = v.toString());
+                              _autoCalculate();
+                              _schedulePersist();
+                            },
+                          ),
+                        );
+                      }).toList(),
                     );
-                  }).toList(),
+                  },
                 ),
                 // Row 2: Buy / Sell price
                 Row(children: [
@@ -862,7 +870,7 @@ class _MarketScreenState extends State<MarketScreen> {
     double r = calc.get(key);
     if (r == 0) return '';
     String s = r.toStringAsFixed(6).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
-    return '$s%';
+    return s;
   }
 
   Widget _buildResults(bool isMalaysia, bool isForeign) {
@@ -873,6 +881,7 @@ class _MarketScreenState extends State<MarketScreen> {
     final hasBuy = _buyCtrl.text.trim().isNotEmpty;
     final hasSell = _sellCtrl.text.trim().isNotEmpty;
     final modeLabel = _isOnline ? 'Online' : 'Offline';
+    final settleCurr = _settleLocal ? cur : 'MYR';
 
     List<_Row> rows = [];
 
@@ -914,7 +923,7 @@ class _MarketScreenState extends State<MarketScreen> {
 
     // Foreign Brokerage (US, HK, SG)
     if (m.name == 'United States (US)' || m.name == 'Hong Kong' || m.name == 'Singapore') {
-      rows.add(_Row('Foreign Brokerage', _curr('MYR'),
+      rows.add(_Row('Foreign Brokerage', '',
         buy: _disp(_buy, 'forbrkamt_rm', 'forbrkamt', buyRate),
         sell: _disp(_sell, 'forbrkamt_rm', 'forbrkamt', sellRate),
       ));
@@ -922,23 +931,23 @@ class _MarketScreenState extends State<MarketScreen> {
 
     // Foreign Stamp Duty (HK only)
     if (_anyNonZero('forstampduty')) {
-      rows.add(_Row('Foreign Stamp Duty', cur,
-        buy: _gv(_buy, 'forstampduty', 'forstampduty'),
-        sell: _gv(_sell, 'forstampduty', 'forstampduty'),
+      rows.add(_Row('Foreign Stamp Duty', '',
+        buy: _disp(_buy, 'forstampduty_rm', 'forstampduty', buyRate),
+        sell: _disp(_sell, 'forstampduty_rm', 'forstampduty', sellRate),
       ));
     }
 
     // CCASS Fee (HK only)
     if (_anyNonZero('ccassfee')) {
-      rows.add(_Row('CCASS Fee', cur,
-        buy: _gv(_buy, 'ccassfee', 'ccassfee'),
-        sell: _gv(_sell, 'ccassfee', 'ccassfee'),
+      rows.add(_Row('CCASS Fee', '',
+        buy: _disp(_buy, 'ccassfee_rm', 'ccassfee', buyRate),
+        sell: _disp(_sell, 'ccassfee_rm', 'ccassfee', sellRate),
       ));
     }
 
     // Trading Fee (HK & SG)
     if (_anyNonZero('trdfee')) {
-      rows.add(_Row('Trading Fee', _curr('MYR'),
+      rows.add(_Row('Trading Fee', '',
         buy: _disp(_buy, 'trdfee_rm', 'trdfee', buyRate),
         sell: _disp(_sell, 'trdfee_rm', 'trdfee', sellRate),
       ));
@@ -946,15 +955,15 @@ class _MarketScreenState extends State<MarketScreen> {
 
     // Levy Fee (HK only)
     if (_anyNonZero('levyfee')) {
-      rows.add(_Row('Levy Fee', cur,
-        buy: _gv(_buy, 'levyfee', 'levyfee'),
-        sell: _gv(_sell, 'levyfee', 'levyfee'),
+      rows.add(_Row('Levy Fee', '',
+        buy: _disp(_buy, 'levyfee_rm', 'levyfee', buyRate),
+        sell: _disp(_sell, 'levyfee_rm', 'levyfee', sellRate),
       ));
     }
 
     // IB Charges (other foreign markets - not Malaysia, US, HK, SG)
     if (!isMalaysia && m.name != 'United States (US)' && m.name != 'Hong Kong' && m.name != 'Singapore') {
-      rows.add(_Row('IB Charges', _curr('MYR'),
+      rows.add(_Row('IB Charges', '',
         buy: _disp(_buy, 'ibrmcharges', 'ibcharges', buyRate),
         sell: _disp(_sell, 'ibrmcharges', 'ibcharges', sellRate),
       ));
@@ -964,14 +973,14 @@ class _MarketScreenState extends State<MarketScreen> {
     if (_applyGst) {
       // SST/GST - Brokerage
       final gstLabel = isMalaysia ? 'SST - Brokerage' : 'GST - Brokerage';
-      rows.add(_Row(gstLabel, _curr('MYR'),
+      rows.add(_Row(gstLabel, '',
         buy: _disp(_buy, 'gstbrkamt', 'gstbrkamtcv', buyRate),
         sell: _disp(_sell, 'gstbrkamt', 'gstbrkamtcv', sellRate),
       ));
 
       // SST/GST - Clearing Fee
       final gstClrLabel = isMalaysia ? 'SST - Clearing Fee' : 'GST - Clearing Fee';
-      rows.add(_Row(gstClrLabel, _curr('MYR'),
+      rows.add(_Row(gstClrLabel, '',
         buy: _disp(_buy, 'gstclrfee', null, buyRate),
         sell: _disp(_sell, 'gstclrfee', null, sellRate),
       ));
@@ -980,7 +989,7 @@ class _MarketScreenState extends State<MarketScreen> {
       if (!isMalaysia) {
         final gstIbLabel = (m.name == 'United States (US)' || m.name == 'Hong Kong' || m.name == 'Singapore')
             ? 'GST - Foreign Brokerage' : 'GST - IB Charges';
-        rows.add(_Row(gstIbLabel, _curr('MYR'),
+        rows.add(_Row(gstIbLabel, '',
           buy: _disp(_buy, 'gstforfee', 'gstforfeecv', buyRate),
           sell: _disp(_sell, 'gstforfee', 'gstforfeecv', sellRate),
         ));
@@ -990,14 +999,14 @@ class _MarketScreenState extends State<MarketScreen> {
 
     // DF A/C rows (Malaysia only)
     if (_dfBuy != null) {
-      rows.add(_Row('DF Interest', 'MYR',
+      rows.add(_Row('DF Interest', '',
         buy: _dfBuy?['dfint'],
       ));
-      rows.add(_Row('DF Fees', 'MYR',
+      rows.add(_Row('DF Fees', '',
         buy: _dfBuy?['dffee'],
       ));
       if (_applyGst) {
-        rows.add(_Row('GST - DF Fees', 'MYR',
+        rows.add(_Row('GST - DF Fees', '',
           buy: _dfBuy?['dfgstfee'],
         ));
       }
@@ -1042,7 +1051,7 @@ class _MarketScreenState extends State<MarketScreen> {
               Icon(Icons.receipt_long, size: 18, color: marketAccent(m.name)),
               const SizedBox(width: 6),
               Expanded(
-                child: Text('Results ($modeLabel)',
+                child: Text('Results ($modeLabel) - $settleCurr',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               ),
               IconButton(
@@ -1267,6 +1276,9 @@ class _MarketScreenState extends State<MarketScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final buyColor = isDark ? AppColors.buyDark : AppColors.buyLight;
     final sellColor = isDark ? AppColors.sellDark : AppColors.sellLight;
+    
+    // Dynamic currency header: show settlement currency (MYR by default, or foreign currency when settled locally)
+    final settleCurr = _settleLocal ? widget.market.currency : 'MYR';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1277,8 +1289,8 @@ class _MarketScreenState extends State<MarketScreen> {
       child: Row(
         children: [
           const Expanded(flex: 3, child: Text('Item', style: TextStyle(fontWeight: FontWeight.bold))),
-          const Expanded(flex: 1, child: Text('Curr', style: TextStyle(fontWeight: FontWeight.bold))),
-          const Expanded(flex: 1, child: Text('Rate', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+          const Expanded(flex: 1, child: SizedBox.shrink()),
+          const Expanded(flex: 3, child: Text('%', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
           Expanded(flex: 4, child: Text('BUY', style: TextStyle(fontWeight: FontWeight.bold, color: buyColor), textAlign: TextAlign.right)),
           Expanded(flex: 4, child: Text('SELL', style: TextStyle(fontWeight: FontWeight.bold, color: sellColor), textAlign: TextAlign.right)),
         ],
@@ -1428,8 +1440,8 @@ class _ResultRow extends StatelessWidget {
                         ? theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)
                         : theme.textTheme.bodySmall),
           ),
-          Expanded(flex: 1, child: Text(row.curr, style: theme.textTheme.bodySmall)),
-          Expanded(flex: 1, child: Text(row.rate, style: theme.textTheme.bodySmall, textAlign: TextAlign.right)),
+          const Expanded(flex: 1, child: SizedBox.shrink()),
+          Expanded(flex: 3, child: Text(row.rate, style: theme.textTheme.bodySmall, textAlign: TextAlign.right)),
           Expanded(flex: 4, child: Text(num(row.buy), style: cellStyle(row.buy, true), textAlign: TextAlign.right)),
           Expanded(flex: 4, child: Text(num(row.sell), style: cellStyle(row.sell, false), textAlign: TextAlign.right)),
         ],

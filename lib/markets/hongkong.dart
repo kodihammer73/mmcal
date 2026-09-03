@@ -143,6 +143,12 @@ class HongKongMarket extends ForeignMarket {
     double gstforfeecv = effectiveRate != 0 ? round2dp(gstforfee / effectiveRate) : 0;
     double ibcharges = effectiveRate != 0 ? round2dp((malbrkamt1 + stampdutyRaw) / effectiveRate) : 0;
 
+    // Convert HKD-denominated fees to MYR equivalents for settlement in MYR
+    double trdfee_rm = round2dp(trdfee * effectiveRate);
+    double ccassfee_rm = round2dp(ccassfee1 * effectiveRate);
+    double levyfee_rm = round2dp(levyfee * effectiveRate);
+    double forstampduty_rm = round2dp(forstampduty * effectiveRate);
+
     double val1, val2;
     if (buysel == 1) {
       val1 = rmgross + malbrkamt1 + stampduty + gstbrkamt + gstforfee + ibrmcharges;
@@ -157,12 +163,14 @@ class HongKongMarket extends ForeignMarket {
       'malbrkamt': malbrkamt1, 'stampduty': stampduty, 'stampduty_raw': stampdutyRaw,
       'stampdutyrate': s.get(stampDutyRateKey),
       'clrfee': 0, 'clrfeerate': 0,
-      'trdfee': trdfee,
+      'trdfee': trdfee, 'trdfee_rm': trdfee_rm,
       'gstbrkamt': gstbrkamt, 'gstclrfee': gstclrfee, 'gstforfee': gstforfee,
       'forbrkamt': forbrkamt, 'forbrkamt_rm': round2dp(forbrkamt * effectiveRate),
       'gstbrkamtcv': gstbrkamtcv, 'gstforfeecv': gstforfeecv,
       'ibrmcharges': ibrmcharges, 'ibcharges': ibcharges,
-      'levyfee': levyfee, 'forstampduty': forstampduty, 'ccassfee': ccassfee1,
+      'levyfee': levyfee, 'levyfee_rm': levyfee_rm,
+      'forstampduty': forstampduty, 'forstampduty_rm': forstampduty_rm,
+      'ccassfee': ccassfee1, 'ccassfee_rm': ccassfee_rm,
       'assfund': 0, 'exchfee': 0, 'salestax': 0,
       'val1': val1, 'val2': val2, 'net_value': val1,
     });
