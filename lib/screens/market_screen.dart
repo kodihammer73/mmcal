@@ -1276,9 +1276,6 @@ class _MarketScreenState extends State<MarketScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final buyColor = isDark ? AppColors.buyDark : AppColors.buyLight;
     final sellColor = isDark ? AppColors.sellDark : AppColors.sellLight;
-    
-    // Dynamic currency header: show settlement currency (MYR by default, or foreign currency when settled locally)
-    final settleCurr = _settleLocal ? widget.market.currency : 'MYR';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
