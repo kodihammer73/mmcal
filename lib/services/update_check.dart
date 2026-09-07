@@ -43,9 +43,12 @@ class UpdateCheckResult {
 /// If the installed version is lower than [min_version], [updateRequired]
 /// is true and the caller should show a blocking update screen.
 class UpdateChecker {
-  /// The URL of the hosted JSON config. Replace with your own endpoint.
+  /// The URL of the hosted JSON config (mmcal_version.json on the project
+  /// website). The file controls the minimum app version and the store link.
+  /// It is checked at app launch; a 404/network error fails open (no force).
+  /// https://www.gurdwarasahibmelaka.com/policy/mmcal_version.json
   static const String configUrl =
-      'https://mmcal-a1551-default-rtdb.asia-southeast1.firebasedatabase.app/.json';
+      'https://www.gurdwarasahibmelaka.com/policy/mmcal_version.json';
 
   /// Timeout for the network request.
   static const Duration _timeout = Duration(seconds: 8);
