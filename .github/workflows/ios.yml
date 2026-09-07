@@ -1,16 +1,20 @@
-name: iOS Build
+name: iOS Build & Publish
 
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build-ios:
-    name: Build iOS App
+  build-and-publish-ios:
+    name: Build iOS App & Publish
     runs-on: macos-latest
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,7 +37,7 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build iOS app (unsigned)
+      - name: Build unsigned iOS app
         run: flutter build ios --release --no-codesign
 
       - name: Package unsigned .ipa
@@ -43,11 +47,100 @@ jobs:
           zip -r mmcal-ios.ipa Payload
           rm -rf Payload
 
-      - name: Upload iOS .ipa artifact
+      - name: Upload unsigned iOS .ipa artifact
         uses: actions/upload-artifact@v4
         with:
           name: mmcal-ios-ipa
           path: mmcal-ios.ipa
           if-no-files-found: error
+
+      # ── Signing + App Store publishing only on version tags (v*) ──────────
+      - name: Import signing certificate
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          APPLE_DIST_P12: ${{ secrets.APPLE_DIST_P12 }}
+          APPLE_DIST_P12_PASSWORD: ${{ secrets.APPLE_DIST_P12_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$APPLE_DIST_P12" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_DIST_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN_PATH"
+        shell: bash
+
+      - name: Install provisioning profile
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          APPLE_DIST_PROFILE: ${{ secrets.APPLE_DIST_PROFILE }}
+        run: |
+          PROFILE_PATH="$RUNNER_TEMP/distribution.mobileprovision"
+          echo "$APPLE_DIST_PROFILE" | base64 --decode > "$PROFILE_PATH"
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/distribution.plist"
+          UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$RUNNER_TEMP/distribution.plist")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          echo "Installed provisioning profile UUID: $UUID"
+        shell: bash
+
+      - name: Sign app & create signed IPA
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          APPLE_DIST_PROFILE: ${{ secrets.APPLE_DIST_PROFILE }}
+        run: |
+          set -euo pipefail
+          cd build/ios/iphoneos
+          APP="Runner.app"
+          # Restore the provisioning profile into the bundle (required by App Store Connect)
+          PROFILE_PATH="$RUNNER_TEMP/distribution.mobileprovision"
+          echo "$APPLE_DIST_PROFILE" | base64 --decode > "$PROFILE_PATH"
+          cp "$PROFILE_PATH" "$APP/embedded.mobileprovision"
+          # Extract the profile's entitlements (includes aps-environment)
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/profile.plist"
+          /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$RUNNER_TEMP/profile.plist" > "$RUNNER_TEMP/entitlements.plist"
+          # Sign nested frameworks first (no app-level entitlements)
+          while IFS= read -r -d '' fw; do
+            /usr/bin/codesign --force --sign "iPhone Distribution" "$fw"
+          done < <(find "$APP" -name '*.framework' -type d -prune -print0)
+          # Sign the app bundle; applies entitlements to the main executable
+          /usr/bin/codesign --force --sign "iPhone Distribution" \
+            --entitlements "$RUNNER_TEMP/entitlements.plist" "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | sed -n '1,15p'
+          # Package into an .ipa (Payload/Runner.app)
+          rm -rf Payload
+          mkdir -p Payload
+          mv Runner.app Payload/
+          zip -r -y "${{ github.workspace }}/mmcal-ios.ipa" Payload/
+        shell: bash
+
+      - name: Upload signed IPA artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmcal-ios-signed-ipa
+          path: mmcal-ios.ipa
+
+      - name: Upload to App Store Connect
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun altool --upload-app -f "${{ github.workspace }}/mmcal-ios.ipa" -t ios \
+            -u "$APPLE_ID" -p "$APPLE_APP_SPECIFIC_PASSWORD" --verbose
+        shell: bash
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          files: mmcal-ios.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
