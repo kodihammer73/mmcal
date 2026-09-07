@@ -94,6 +94,13 @@ jobs:
           set -euo pipefail
           cd build/ios/iphoneos
           APP="Runner.app"
+          # Resolve the codesigning identity installed from the .p12 secret. Works
+          # whether the cert is the current "Apple Distribution" or a legacy
+          # "iPhone Distribution" one; we sign by the cert's unique SHA-1 hash.
+          IDENTITY=$(security find-identity -v -p codesigning \
+            | grep -E '"((Apple|iPhone) Distribution)"' | head -1 | awk '{print $2}')
+          echo "Signing identity: $IDENTITY"
+          test -n "$IDENTITY" # fail fast if no distribution identity was imported
           # Restore the provisioning profile into the bundle (required by App Store Connect)
           PROFILE_PATH="$RUNNER_TEMP/distribution.mobileprovision"
           echo "$APPLE_DIST_PROFILE" | base64 --decode > "$PROFILE_PATH"
@@ -103,10 +110,10 @@ jobs:
           /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$RUNNER_TEMP/profile.plist" > "$RUNNER_TEMP/entitlements.plist"
           # Sign nested frameworks first (no app-level entitlements)
           while IFS= read -r -d '' fw; do
-            /usr/bin/codesign --force --sign "iPhone Distribution" "$fw"
+            /usr/bin/codesign --force --sign "$IDENTITY" "$fw"
           done < <(find "$APP" -name '*.framework' -type d -prune -print0)
           # Sign the app bundle; applies entitlements to the main executable
-          /usr/bin/codesign --force --sign "iPhone Distribution" \
+          /usr/bin/codesign --force --sign "$IDENTITY" \
             --entitlements "$RUNNER_TEMP/entitlements.plist" "$APP"
           codesign -dv --verbose=4 "$APP" 2>&1 | sed -n '1,15p'
           # Package into an .ipa (Payload/Runner.app)
