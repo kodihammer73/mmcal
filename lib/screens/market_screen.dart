@@ -77,13 +77,6 @@ class _MarketScreenState extends State<MarketScreen> {
   // Debounced persistence so we don't hammer SharedPreferences on every key.
   Timer? _persistTimer;
 
-  // Debounced live re-calculation while typing prices/rates (see #1).
-  Timer? _autoCalcTimer;
-
-  // True when inputs changed after results were last calculated, so the UI can
-  // flag that results are stale/updating (see #2).
-  bool _recalcPending = false;
-
   // Incremented on every calculate to re-key the results animation.
   int _formSeq = 0;
 
@@ -197,16 +190,6 @@ class _MarketScreenState extends State<MarketScreen> {
     await FormStateStore.save(widget.market.name, _collectState());
   }
 
-  /// Debounced live recalculation while typing prices/rates. Uses the same
-  /// guards as [_autoCalculate], so it no-ops when the quantity is missing.
-  void _scheduleAutoCalc() {
-    _autoCalcTimer?.cancel();
-    _autoCalcTimer = Timer(const Duration(milliseconds: 400), () {
-      _autoCalcTimer = null;
-      _autoCalculate();
-    });
-  }
-
   /// Scrolls the results card into view (post-frame so it exists after the
   /// rebuild triggered by [setState]).
   void _scrollToResults() {
@@ -267,18 +250,30 @@ class _MarketScreenState extends State<MarketScreen> {
         _dfBuy = mm.dfAcCalculate(mode: mode, buysel: 1, flag: flag, qty: qty, price: buy, rate: buyRate, brkrate: brkrate, noday: _dfDays, minBrkOverride: minBrkOverride);
       }
       _formSeq++;
-      _recalcPending = false;
-      _autoCalcTimer?.cancel();
     });
     _schedulePersist();
     _scrollToResults();
   }
 
-  void _autoCalculate() {
-    // Only auto-calculate if quantity is filled (avoid errors on empty form)
-    if (_qtyCtrl.text.trim().isEmpty) return;
-    if (double.tryParse(_qtyCtrl.text) == null) return;
-    _calculate();
+  /// Any change to a trade input or option invalidates previously computed
+  /// results. Because results are only produced by an explicit Calculate press
+  /// (no auto-calc), any stale results are cleared here so the results area
+  /// returns to its empty "press Calculate" prompt until Calculate is tapped
+  /// again.
+  ///
+  /// [mutate] (optional) runs first inside [setState] so callers can update a
+  /// flag derived from the change (e.g. auto-tick Special Rate) in the same pass.
+  void _clearResultsOnChange([VoidCallback? mutate]) {
+    setState(() {
+      mutate?.call();
+      if (_hasResults) {
+        _buy = null;
+        _sell = null;
+        _dfBuy = null;
+        _formSeq++;
+      }
+    });
+    _schedulePersist();
   }
 
   void _clear() {
@@ -305,8 +300,6 @@ class _MarketScreenState extends State<MarketScreen> {
       _buy = null;
       _sell = null;
       _dfBuy = null;
-      _recalcPending = false;
-      _autoCalcTimer?.cancel();
     });
     _persistTimer?.cancel();
     FormStateStore.clear(widget.market.name);
@@ -315,7 +308,6 @@ class _MarketScreenState extends State<MarketScreen> {
   @override
   void dispose() {
     _persistTimer?.cancel();
-    _autoCalcTimer?.cancel();
     _scrollController.dispose();
     _qtyCtrl.dispose();
     _buyCtrl.dispose();
@@ -340,23 +332,6 @@ class _MarketScreenState extends State<MarketScreen> {
       return compact;
     }
     return full;
-  }
-
-  /// Auto-calc while typing only when the value is a *parseable, positive*
-  /// number. This prevents intermediate keystrokes (e.g. typing '.', '.5',
-  /// '0.', or clearing) from triggering a rebuild that resets focus / the
-  /// scroll position — the field refreshes and the user has to re-navigate
-  /// mid-edit. Intermediate forms are tolerated; a complete valid value
-  /// (e.g. "0.512") schedules the debounced recalc as normal.
-  void _maybeAutoCalc(String val) {
-    final n = double.tryParse(val);
-    setState(() {
-      _recalcPending = _hasResults && (n == null || n > 0);
-    });
-    if (n != null && n > 0) {
-      _scheduleAutoCalc();
-    }
-    _schedulePersist();
   }
 
   /// Sticky bar pinned to the bottom of the screen summarising the TOTAL for
@@ -556,7 +531,7 @@ class _MarketScreenState extends State<MarketScreen> {
                   Expanded(child: _inputField(_qtyCtrl, 'Quantity', TextInputType.number, prefix: const Icon(Icons.tag, size: 18),
                       autofocus: true,
                       onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                      onChanged: (_) => setState(() {}))),
+                      onChanged: (_) => _clearResultsOnChange())),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -570,55 +545,21 @@ class _MarketScreenState extends State<MarketScreen> {
                       ),
                       onChanged: (val) {
                         final rate = double.tryParse(val) ?? 0;
-                        setState(() {
-                          _flagSpecial = rate > 0;
-                          _recalcPending = _hasResults;
-                        });
-                        _autoCalculate();
-                        _schedulePersist();
+                        _clearResultsOnChange(() => _flagSpecial = rate > 0);
                       },
                     ),
                   ),
                 ]),
                 const SizedBox(height: 8),
-
-                // Quick quantity fill
-                const SizedBox(height: 8),
-                LayoutBuilder(
-                  builder: (context, _) {
-                    return Row(
-                      children: [1000, 2000, 5000, 10000].map((v) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: ActionChip(
-                            label: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(v.toString(), style: Theme.of(context).textTheme.bodyMedium),
-                              ),
-                            ),
-                            materialTapTargetSize: MaterialTapTargetSize.padded,
-                            onPressed: () {
-                              setState(() => _qtyCtrl.text = v.toString());
-                              _autoCalculate();
-                              _schedulePersist();
-                            },
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
                 // Row 2: Buy / Sell price
                 Row(children: [
                   Expanded(child: _inputField(_buyCtrl, 'Buy Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.shopping_cart, size: 18),
                     onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                    onChanged: (v) => _maybeAutoCalc(v))),
+                    onChanged: (_) => _clearResultsOnChange())),
                   const SizedBox(width: 8),
                   Expanded(child: _inputField(_sellCtrl, 'Sell Price (${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.sell, size: 18),
                       onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                      onChanged: (v) => _maybeAutoCalc(v))),
+                      onChanged: (_) => _clearResultsOnChange())),
                 ]),
                 const SizedBox(height: 8),
                 // Row 3: Buy / Sell rate (foreign only)
@@ -626,12 +567,12 @@ class _MarketScreenState extends State<MarketScreen> {
                   Row(children: [
                     Expanded(child: _inputField(_buyRateCtrl, 'Buy Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), hintText: '1.0',
                         onSubmitted: (_) => FocusScope.of(context).nextFocus(),
-                        onChanged: (v) => _maybeAutoCalc(v))),
+                        onChanged: (_) => _clearResultsOnChange())),
                     const SizedBox(width: 8),
                     Expanded(child: _inputField(_sellRateCtrl, 'Sell Rate (MYR/${m.currency})', const TextInputType.numberWithOptions(decimal: true), prefix: const Icon(Icons.currency_exchange, size: 18), hintText: '1.0',
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                        onChanged: (v) => _maybeAutoCalc(v))),
+                        onChanged: (_) => _clearResultsOnChange())),
                   ]),
                   const SizedBox(height: 8),
                 ],
@@ -646,9 +587,9 @@ class _MarketScreenState extends State<MarketScreen> {
                     // Row 4: Offline / Online / Buy / Sell (highlight only, no tick)
                     Row(children: [
                       if (m.supportsOnline) ...[
-                        Expanded(child: _fixedChip('Offline', !_isOnline, (_) => setState(() { _isOnline = false; _autoCalculate(); }))),
+                        Expanded(child: _fixedChip('Offline', !_isOnline, (_) => _clearResultsOnChange(() { _isOnline = false; }))),
                         const SizedBox(width: 6),
-                        Expanded(child: _fixedChip('Online', _isOnline, (_) => setState(() { _isOnline = true; _autoCalculate(); }))),
+                        Expanded(child: _fixedChip('Online', _isOnline, (_) => _clearResultsOnChange(() { _isOnline = true; }))),
                         const SizedBox(width: 6),
                       ],
                       Expanded(child: _fixedChip('Buy', _buyCtrl.text.isNotEmpty, (_) {})),
@@ -662,17 +603,17 @@ class _MarketScreenState extends State<MarketScreen> {
                       runSpacing: 6,
                       children: [
                         if (m.flagMinRm12) ...[
-                          _fixedChip('MIN RM12', _flagMinRm == 12, (v) => setState(() { _flagMinRm = v! ? 12 : 0; _autoCalculate(); })),
-                          _fixedChip('MIN RM8', _flagMinRm == 8, (v) => setState(() { _flagMinRm = v! ? 8 : 0; _autoCalculate(); })),
+                          _fixedChip('MIN RM12', _flagMinRm == 12, (v) => _clearResultsOnChange(() { _flagMinRm = v! ? 12 : 0; })),
+                          _fixedChip('MIN RM8', _flagMinRm == 8, (v) => _clearResultsOnChange(() { _flagMinRm = v! ? 8 : 0; })),
                         ],
                         if (m.flagNoSduty)
-                          _fixedChip('NO S/D', _flagNoSduty, (v) => setState(() { _flagNoSduty = v!; _autoCalculate(); })),
+                          _fixedChip('NO S/D', _flagNoSduty, (v) => _clearResultsOnChange(() { _flagNoSduty = v!; })),
                         if (isMalaysia)
-                          _fixedChip('DF A/C', _dfAc, (v) => setState(() { _dfAc = v!; _autoCalculate(); })),
-                        _fixedChip('Special Rate', _flagSpecial, (v) => setState(() { _flagSpecial = v!; _autoCalculate(); })),
-                        _fixedChip('Apply GST/SST', _applyGst, (v) => setState(() { _applyGst = v!; _autoCalculate(); })),
+                          _fixedChip('DF A/C', _dfAc, (v) => _clearResultsOnChange(() { _dfAc = v!; })),
+                        _fixedChip('Special Rate', _flagSpecial, (v) => _clearResultsOnChange(() { _flagSpecial = v!; })),
+                        _fixedChip('Apply GST/SST', _applyGst, (v) => _clearResultsOnChange(() { _applyGst = v!; })),
                         if (isForeign)
-                          _fixedChip('Sett in ${m.currency}', _settleLocal, (v) => setState(() { _settleLocal = v!; _autoCalculate(); })),
+                          _fixedChip('Sett in ${m.currency}', _settleLocal, (v) => _clearResultsOnChange(() { _settleLocal = v!; })),
                       ],
                     ),
                     // DF Days field (Malaysia only, shown when DF A/C ticked)
@@ -693,8 +634,7 @@ class _MarketScreenState extends State<MarketScreen> {
                           onChanged: (v) {
                             final d = int.tryParse(v);
                             if (d != null) {
-                              setState(() { _dfDays = d; });
-                              _autoCalculate();
+                              _clearResultsOnChange(() { _dfDays = d; });
                             }
                           },
                         ),
@@ -783,20 +723,6 @@ class _MarketScreenState extends State<MarketScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_recalcPending) ...[
-                      Row(
-                        children: [
-                          const SizedBox(
-                              width: 14, height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2)),
-                          const SizedBox(width: 8),
-                          Text('Recalculating…',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                    ],
                     _buildResults(isMalaysia, isForeign),
                     const SizedBox(height: 8),
                     _buildFooter(),
