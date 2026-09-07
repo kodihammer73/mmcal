@@ -94,11 +94,11 @@ jobs:
           set -euo pipefail
           cd build/ios/iphoneos
           APP="Runner.app"
-          # Resolve the codesigning identity installed from the .p12 secret. Works
-          # whether the cert is the current "Apple Distribution" or a legacy
-          # "iPhone Distribution" one; we sign by the cert's unique SHA-1 hash.
-          IDENTITY=$(security find-identity -v -p codesigning \
-            | grep -E '"((Apple|iPhone) Distribution)"' | head -1 | awk '{print $2}')
+          # Resolve the codesigning identity (its SHA-1 hash) installed from the
+          # .p12 secret. Works for both the current "Apple Distribution:" and
+          # legacy "iPhone Distribution:" certificate names; we take the first
+          # distribution identity found in the keychain.
+          IDENTITY=$(security find-identity -v -p codesigning | awk '/Distribution/ {print $2; exit}')
           echo "Signing identity: $IDENTITY"
           test -n "$IDENTITY" # fail fast if no distribution identity was imported
           # Restore the provisioning profile into the bundle (required by App Store Connect)
