@@ -9,7 +9,9 @@ import '../engine/engine.dart';
 import '../main.dart';
 import '../markets/malaysia.dart';
 import '../services/form_state.dart';
+import '../services/portfolio_store.dart';
 import '../ui/branding.dart';
+import 'add_portfolio_sheet.dart';
 
 final _numFmt = NumberFormat('#,##0.00');
 // Compact readouts for tight spaces (e.g. the sticky TOTAL bar) so large
@@ -334,6 +336,16 @@ class _MarketScreenState extends State<MarketScreen> {
     return full;
   }
 
+  /// Formats an RM setting for a chip label: 12.00 -> "12", 8.50 -> "8.5".
+  /// Keeps the quick-select MIN RMxx chip labels in step with the configured
+  /// min-brokerage settings (Settings -> Malaysia -> Min Brokerage RM12 / RM8).
+  String _fmtRm(double v) {
+    final s = v.toStringAsFixed(2);
+    if (s.endsWith('.00')) return s.substring(0, s.length - 3);
+    if (s.endsWith('0')) return s.substring(0, s.length - 1);
+    return s;
+  }
+
   /// Sticky bar pinned to the bottom of the screen summarising the TOTAL for
   /// BUY / SELL so the key figure stays visible while scrolling (see #9).
   Widget _stickyTotalBar(bool isMalaysia, bool isForeign) {
@@ -603,8 +615,11 @@ class _MarketScreenState extends State<MarketScreen> {
                       runSpacing: 6,
                       children: [
                         if (m.flagMinRm12) ...[
-                          _fixedChip('MIN RM12', _flagMinRm == 12, (v) => _clearResultsOnChange(() { _flagMinRm = v! ? 12 : 0; })),
-                          _fixedChip('MIN RM8', _flagMinRm == 8, (v) => _clearResultsOnChange(() { _flagMinRm = v! ? 8 : 0; })),
+                          // Labels reflect the configured minimums (Settings ->
+                          // Malaysia -> Min Brokerage RM12 / RM8), so a user who
+                          // changes those settings sees the new amounts here.
+                          _fixedChip('MIN RM${_fmtRm(m.s.get('malminbrk'))}', _flagMinRm == 12, (v) => _clearResultsOnChange(() { _flagMinRm = v! ? 12 : 0; })),
+                          _fixedChip('MIN RM${_fmtRm(m.s.get('malminbrk8'))}', _flagMinRm == 8, (v) => _clearResultsOnChange(() { _flagMinRm = v! ? 8 : 0; })),
                         ],
                         if (m.flagNoSduty)
                           _fixedChip('NO S/D', _flagNoSduty, (v) => _clearResultsOnChange(() { _flagNoSduty = v!; })),
@@ -987,6 +1002,18 @@ class _MarketScreenState extends State<MarketScreen> {
                 onPressed: () => _copySummary(rows),
                 icon: const Icon(Icons.copy),
               ),
+              // Add to portfolio. Shown only when exactly ONE of buy/sell is
+              // filled (XOR), so the side, price and total are unambiguous.
+              if (hasBuy != hasSell)
+                IconButton(
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Add to portfolio',
+                  onPressed: (double.tryParse(_qtyCtrl.text) ?? 0) > 0
+                      ? () => _addToPortfolio(isBuy: hasBuy)
+                      : null,
+                  icon: const Icon(Icons.add),
+                ),
               IconButton(
                 iconSize: 18,
                 visualDensity: VisualDensity.compact,
@@ -1117,6 +1144,58 @@ class _MarketScreenState extends State<MarketScreen> {
 
   static String formatCell(double? v) =>
       v == null ? '' : _numFmt.format(v);
+  /// Opens the add-to-portfolio sheet prefilled from the current result.
+  ///
+  /// Only offered when exactly one of buy/sell is filled, so the side, the
+  /// price and the total are unambiguous. Qty and price are read-only in the
+  /// sheet; the total is prefilled from the result and may be amended.
+  Future<void> _addToPortfolio({required bool isBuy}) async {
+    final m = widget.market;
+    final qty = double.tryParse(_qtyCtrl.text) ?? 0;
+    if (qty <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a quantity first.')),
+      );
+      return;
+    }
+
+    final side = isBuy ? 'buy' : 'sell';
+    final price = double.tryParse((isBuy ? _buyCtrl : _sellCtrl).text) ?? 0;
+    final calc = isBuy ? _buy : _sell;
+    // Settlement currency follows the "Sett in <cur>" toggle, exactly like the
+    // totals shown on screen: MYR when unticked, the local currency when ticked.
+    final currency = _settleLocal ? m.currency : 'MYR';
+    final total = _settleLocal
+        ? (_gv(calc, 'val2', 'val2') ?? 0)
+        : (_gv(calc, 'val1', 'net_value') ?? 0);
+
+    final all = await PortfolioStore.load();
+    if (!mounted) return;
+
+    final outcome = await showPortfolioEntrySheet(
+      context,
+      market: m.name,
+      currency: currency,
+      side: side,
+      qty: qty,
+      price: price,
+      total: total,
+      allTxns: all,
+    );
+    final saved = outcome?.saved;
+    if (saved == null) return;
+
+    await PortfolioStore.add(saved);
+    if (!mounted) return;
+    final label = saved.code.isNotEmpty ? saved.code : saved.name;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Added $label to portfolio'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _copySummary(List<_Row> rows) async {
     await Clipboard.setData(ClipboardData(text: _buildSummaryText(rows)));
     if (!mounted) return;

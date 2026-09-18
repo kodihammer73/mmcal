@@ -151,6 +151,15 @@ abstract class ForeignMarket extends Market {
   /// Combined brokerage minimum (in market currency) - used for special rate
   double get specialCombinedMin => 0;
 
+  /// Mode-aware variant of [specialCombinedMin].
+  ///
+  /// Markets that define no `combined_min` fall back to their offline/online
+  /// brokerage minimum in Python (`engine.py`: `getattr(self, 'combined_min',
+  /// self.min_brk_offline if mode == 5 else self.min_brk_online)`), so the
+  /// special-rate floor differs between offline (5) and online (6). Only
+  /// Canada is affected today; every other market returns the mode-less value.
+  double specialCombinedMinFor(int mode) => specialCombinedMin;
+
   /// Returns (brkamtrate, malbrok)
   (double, double) determineRates(int mode, int buysel, double qty, double price, double rate);
 
@@ -185,7 +194,8 @@ abstract class ForeignMarket extends Market {
       double foreignBrk = gross0 * frate / 100;
       if (foreignBrk < specialForeignMin) foreignBrk = specialForeignMin;
       malbrok = localBrk + foreignBrk;
-      if (malbrok < specialCombinedMin) malbrok = specialCombinedMin;
+      double combinedMin = specialCombinedMinFor(mode);
+      if (malbrok < combinedMin) malbrok = combinedMin;
     }
 
     double clrfeerate = getClearingRate(mode, buysel);

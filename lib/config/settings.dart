@@ -17,6 +17,15 @@ const Map<String, double> kDefaultSettings = {
   'malonbrkrate2': 0.21,
   'malminbrk': 12.00,
   'malminbrk8': 8.00,
+  // Malaysia - DF A/C (Discretionary Financing)
+  'dfintrate': 9.25,
+  'dfintbasis': 365,
+  'dfminfee': 10.00,
+  'dffeeamt': 100000,
+  'dffeerate1': 0.30,
+  'dffeerate2': 0.20,
+  'dfmindays': 4,
+  'dfmaxdays': 8,
   // USA
   'usaforchrgrate': 0.03,
   'usaminbrk': 0.00,
@@ -26,6 +35,11 @@ const Map<String, double> kDefaultSettings = {
   'usaoffmaxrmbrkrate': 0.37,
   'usaonminrmbrkrate': 0.37,
   'usaonmaxrmbrkrate': 0.27,
+  // USA - brokerage minimums (USD)
+  'usaminbroff': 24.00,
+  'usaminbron': 14.00,
+  'usaminforbrk': 4.00,
+  'usaminbrtoff': 28.00,
   // Singapore
   'sinforchrgrate': 0.05,
   'sinminbrk': 0,
@@ -36,6 +50,11 @@ const Map<String, double> kDefaultSettings = {
   'sinonminrmbrkrate': 0.35,
   'sinonmaxrmbrkrate': 0.20,
   'sinstmpdutyrate': 0.10,
+  // Singapore - brokerage minimums (SGD)
+  'sinminbroff': 33.00,
+  'sinminbron': 27.00,
+  'sinminbronpromo': 14.00,
+  'sinminforbrk': 6.00,
   // Hong Kong
   'hkdforchrgrate': 0.05,
   'hkdminbrk': 0,
@@ -49,12 +68,19 @@ const Map<String, double> kDefaultSettings = {
   'hkdoffmaxrmbrkrate': 0.25,
   'hkdonminrmbrkrate': 0.37,
   'hkdonmaxrmbrkrate': 0.20,
+  // Hong Kong - brokerage minimums (HKD)
+  'hkdminbroff': 110.00,
+  'hkdminbronpromo': 50.00,
+  'hkdminforbrk': 40.00,
+  'hkdminbrton': 80.00,
   // Thailand
   'thaforchrgrate': 0.05,
   'thaminbrk': 0,
   'thagstrate': 0.0049,
   'thaoffminrmbrkrate': 0.65,
   'thaoffmaxrmbrkrate': 0.45,
+  // Thailand - brokerage minimum (THB)
+  'thaminbrtcomb': 840.00,
   // Indonesia
   'indforchrgrate': 0.05,
   'indminbrk': 0,
@@ -64,32 +90,58 @@ const Map<String, double> kDefaultSettings = {
   'indsalestax': 0.10,
   'indoffminrmbrkrate': 0.65,
   'indoffmaxrmbrkrate': 0.35,
+  // Indonesia - brokerage minimum (IDR)
+  'indminbrtcomb': 265000,
   // UK
   'ukdforchrgrate': 0.10,
   'ukdminbrk': 0,
   'ukdgstrate': 0.50,
   'ukdoffminrmbrkrate': 0.65,
   'ukdoffmaxrmbrkrate': 0.50,
+  // UK - brokerage minimums (GBP)
+  'ukdminbroff': 18.00,
+  'ukdminforbrk': 20.00,
+  'ukdminbrtcomb': 38.00,
+  'ukdminibfee': 20.00,
   // Australia
   'ausforchrgrate': 0.10,
   'ausminbrk': 0,
   'ausoffminrmbrkrate': 0.65,
   'ausoffmaxrmbrkrate': 0.55,
+  // Australia - brokerage minimums (AUD)
+  'ausminbroff': 35.00,
+  'ausminforbrk': 20.00,
+  'ausminbrtcomb': 55.00,
+  'ausminibfee': 20.00,
   // Japan
   'japforchrgrate': 0.20,
   'japminbrk': 0,
   'japoffminrmbrkrate': 0.70,
   'japoffmaxrmbrkrate': 0.45,
+  // Japan - brokerage minimums (JPY)
+  'japminbroff': 1300,
+  'japminforbrk': 3000,
+  'japminbrtcomb': 4300,
+  'japminibfee': 3000,
   // Canada
   'canforchrgrate': 0.35,
   'canminbrk': 0,
   'canoffminrmbrkrate': 0.90,
   'canoffmaxrmbrkrate': 0.65,
+  // Canada - brokerage minimums (CAD)
+  'canminbroff': 95.00,
+  'canminbrton': 95.00,
+  'canminibfee': 80.00,
   // Germany
   'gerforchrgrate': 0.15,
   'germinbrk': 0,
   'geroffminrmbrkrate': 1.05,
   'geroffmaxrmbrkrate': 0.75,
+  // Germany - brokerage minimums (EUR)
+  'germinbroff': 40.00,
+  'germinforbrk': 20.00,
+  'germinbrtcomb': 60.00,
+  'germinibfee': 20.00,
 };
 
 class SettingsManager {

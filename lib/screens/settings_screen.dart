@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../config/settings.dart';
+import '../main.dart';
 import '../ui/branding.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -37,6 +38,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _Field('malonbrkrate2', 'Online Brk Rate >= RM100K (%)'),
       _Field('malminbrk', 'Min Brokerage RM12'),
       _Field('malminbrk8', 'Min Brokerage RM8'),
+      _Field('dfintrate', 'DF Interest Rate (% p.a.)'),
+      _Field('dfintbasis', 'DF Interest Day Basis (days/year)'),
+      _Field('dfminfee', 'Min DF Fee (RM)'),
+      _Field('dffeeamt', 'DF Fee Tier Threshold (RM)'),
+      _Field('dffeerate1', 'DF Fee Rate Below Threshold (%)'),
+      _Field('dffeerate2', 'DF Fee Rate At/Above Threshold (%)'),
+      _Field('dfmindays', 'DF Free Days (no interest/fee up to)'),
+      _Field('dfmaxdays', 'Max DF Days'),
     ]),
     _Group('United States (US)', [
       _Field('usaforchrgrate', 'Foreign Charge Rate (%)'),
@@ -46,6 +55,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _Field('usaoffmaxrmbrkrate', 'Offline Brk >= RM100K (%)'),
       _Field('usaonminrmbrkrate', 'Online Brk < RM100K (%)'),
       _Field('usaonmaxrmbrkrate', 'Online Brk >= RM100K (%)'),
+      _Field('usaminbroff', 'Min Offline Brokerage (USD)'),
+      _Field('usaminbron', 'Min Online Brokerage (USD)'),
+      _Field('usaminforbrk', 'Min Foreign Brokerage (USD)'),
+      _Field('usaminbrtoff', 'Min Total Brokerage Offline (USD)'),
     ]),
     _Group('Singapore', [
       _Field('sinforchrgrate', 'Foreign Charge Rate (%)'),
@@ -56,6 +69,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _Field('sinoffmaxrmbrkrate', 'Offline Brk >= RM100K (%)'),
       _Field('sinonminrmbrkrate', 'Online Brk < RM100K (%)'),
       _Field('sinonmaxrmbrkrate', 'Online Brk >= RM100K (%)'),
+      _Field('sinminbroff', 'Min Offline Brokerage (SGD)'),
+      _Field('sinminbron', 'Min Online Brokerage (SGD)'),
+      _Field('sinminbronpromo', 'Min Online Special-Rate Brk (SGD)'),
+      _Field('sinminforbrk', 'Min Foreign Brokerage (SGD)'),
     ]),
     _Group('Hong Kong', [
       _Field('hkdforchrgrate', 'Foreign Charge Rate (%)'),
@@ -69,43 +86,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _Field('hkdoffmaxrmbrkrate', 'Offline Brk >= RM100K (%)'),
       _Field('hkdonminrmbrkrate', 'Online Brk < RM100K (%)'),
       _Field('hkdonmaxrmbrkrate', 'Online Brk >= RM100K (%)'),
+      _Field('hkdminbroff', 'Min Offline Brokerage (HKD)'),
+      _Field('hkdminbronpromo', 'Min Online Promo Brokerage (HKD)'),
+      _Field('hkdminforbrk', 'Min Foreign Brokerage (HKD)'),
+      _Field('hkdminbrton', 'Min Total Brokerage Online (HKD)'),
     ]),
     _Group('Thailand', [
       _Field('thaforchrgrate', 'Foreign Charge Rate (%)'),
       _Field('thaoffminrmbrkrate', 'Offline Brk <= RM100K (%)'),
       _Field('thaoffmaxrmbrkrate', 'Offline Brk > RM100K (%)'),
+      _Field('thaminbrtcomb', 'Min Combined Brokerage (THB)'),
     ]),
     _Group('Indonesia', [
       _Field('indforchrgrate', 'Foreign Charge Rate (%)'),
       _Field('indoffminrmbrkrate', 'Offline Brk <= RM100K (%)'),
       _Field('indoffmaxrmbrkrate', 'Offline Brk > RM100K (%)'),
+      _Field('indminbrtcomb', 'Min Combined Brokerage (IDR)'),
     ]),
     _Group('United Kingdom (UK)', [
       _Field('ukdforchrgrate', 'Foreign Charge Rate (%)'),
       _Field('ukdoffminrmbrkrate', 'Offline Brk <= RM100K (%)'),
       _Field('ukdoffmaxrmbrkrate', 'Offline Brk > RM100K (%)'),
+      _Field('ukdminbroff', 'Min Local Brokerage (GBP)'),
+      _Field('ukdminforbrk', 'Min Foreign Brokerage (GBP)'),
+      _Field('ukdminbrtcomb', 'Min Combined Brokerage (GBP)'),
+      _Field('ukdminibfee', 'Min IB Fee (GBP)'),
     ]),
     _Group('Australia', [
       _Field('ausforchrgrate', 'Foreign Charge Rate (%)'),
       _Field('ausoffminrmbrkrate', 'Offline Brk <= RM100K (%)'),
       _Field('ausoffmaxrmbrkrate', 'Offline Brk > RM100K (%)'),
+      _Field('ausminbroff', 'Min Local Brokerage (AUD)'),
+      _Field('ausminforbrk', 'Min Foreign Brokerage (AUD)'),
+      _Field('ausminbrtcomb', 'Min Combined Brokerage (AUD)'),
+      _Field('ausminibfee', 'Min IB Fee (AUD)'),
     ]),
     _Group('Japan', [
       _Field('japforchrgrate', 'Foreign Charge Rate (%)'),
       _Field('japoffminrmbrkrate', 'Offline Brk <= RM100K (%)'),
       _Field('japoffmaxrmbrkrate', 'Offline Brk > RM100K (%)'),
+      _Field('japminbroff', 'Min Local Brokerage (JPY)'),
+      _Field('japminforbrk', 'Min Foreign Brokerage (JPY)'),
+      _Field('japminbrtcomb', 'Min Combined Brokerage (JPY)'),
+      _Field('japminibfee', 'Min IB Fee (JPY)'),
     ]),
     _Group('Canada', [
       _Field('canforchrgrate', 'Foreign Charge Rate (%)'),
       _Field('canoffminrmbrkrate', 'Offline Brk < RM100K (%)'),
       _Field('canoffmaxrmbrkrate', 'Offline Brk >= RM100K (%)'),
+      _Field('canminbroff', 'Min Offline Brokerage (CAD)'),
+      _Field('canminbrton', 'Min Online Brokerage (CAD)'),
+      _Field('canminibfee', 'Min IB Fee (CAD)'),
     ]),
     _Group('Germany', [
       _Field('gerforchrgrate', 'Foreign Charge Rate (%)'),
       _Field('geroffminrmbrkrate', 'Offline Brk <= RM100K (%)'),
       _Field('geroffmaxrmbrkrate', 'Offline Brk > RM100K (%)'),
+      _Field('germinbroff', 'Min Local Brokerage (EUR)'),
+      _Field('germinforbrk', 'Min Foreign Brokerage (EUR)'),
+      _Field('germinbrtcomb', 'Min Combined Brokerage (EUR)'),
+      _Field('germinibfee', 'Min IB Fee (EUR)'),
     ]),
   ];
+
 
   @override
   void initState() {
@@ -185,15 +228,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {});
   }
 
+  /// Matches the Home header gradient so pushed screens feel continuous.
+  Widget _appBarGradient(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: Theme.of(context).brightness == Brightness.dark
+                ? AppColors.appBarGradientDark
+                : AppColors.appBarGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // Explicit so the way back never depends on theme inference - iOS has
+        // no system back button, so this arrow is the primary affordance.
+        leading: const BackButton(),
+        backgroundColor: Colors.transparent,
+        flexibleSpace: _appBarGradient(context),
         title: const Text('Settings'),
         actions: [
           TextButton(
             onPressed: _reset,
-            child: const Text('Reset', style: TextStyle(color: Colors.white)),
+            child: Text(
+              'Reset',
+              style: TextStyle(
+                color: Theme.of(context).appBarTheme.foregroundColor ??
+                    Colors.white,
+              ),
+            ),
           ),
           FilledButton(
             onPressed: _save,

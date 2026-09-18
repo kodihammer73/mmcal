@@ -9,10 +9,11 @@ class UnitedStatesMarket extends ForeignMarket {
   @override bool get flagMinRm12 => false;
   @override bool get flagNoSduty => false;
 
-  static const double localMinOffline = 24;
-  static const double localMinOnline = 14;
-  static const double foreignMin = 4;
-  static const double totalMinOffline = 28;
+  // Local/foreign/total brokerage minimums (USD) - editable in Settings > US
+  double get localMinOffline => s.get('usaminbroff');
+  double get localMinOnline => s.get('usaminbron');
+  double get foreignMin => s.get('usaminforbrk');
+  double get totalMinOffline => s.get('usaminbrtoff');
 
   @override String? get clearingRateKey => 'usasecfeerate';
   @override String? get tradingRateKey => null;

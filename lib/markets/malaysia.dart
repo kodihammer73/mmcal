@@ -127,7 +127,19 @@ class MalaysiaMarket extends Market {
         - calc.get('clrfee') - calc.get('gstbrkamt') - calc.get('gstclrfee');
   }
 
-  /// DF A/C calculation
+  /// DF A/C calculation (Discretionary Financing, buy value only).
+  ///
+  /// Every threshold and rate is driven by settings (Malaysia - DF A/C group
+  /// of the Settings screen):
+  /// - `dfmindays`  - free days; DF applies only when `noday > dfmindays`
+  /// - `dfmaxdays`  - `noday` is capped here
+  /// - `dfintrate`  - interest % per annum, charged on `(noday - dfmindays)` days
+  /// - `dfintbasis` - day-count basis (days per year)
+  /// - `dffeerate1` / `dffeerate2` - DF fee % below / at-or-above the threshold
+  /// - `dffeeamt`   - RM buy-value threshold between the two fee tiers
+  /// - `dfminfee`   - minimum DF fee (RM)
+  /// - GST on DF fees uses the global `gstrate` setting and follows the
+  ///   "Apply GST/SST" toggle (flag bit4 / 16), like the rest of Malaysia.
   Map<String, double> dfAcCalculate({
     required int mode,
     required int buysel,
@@ -142,20 +154,34 @@ class MalaysiaMarket extends Market {
     final base = calculate(mode: mode, buysel: buysel, flag: flag, qty: qty, price: price, rate: rate, brkrate: brkrate, minBrkOverride: minBrkOverride);
     double buyval = base.get('net_value');
 
-    if (noday <= 4) {
+    final int dfMinDays = s.get('dfmindays').round();
+    final int dfMaxDays = s.get('dfmaxdays').round();
+
+    // DF A/C only applies after the free days (capped at the max)
+    if (noday <= dfMinDays) {
       return {'dfint': 0, 'dffee': 0, 'dfgstfee': 0, 'total': buyval};
     }
-    if (noday > 8) noday = 8;
+    if (noday > dfMaxDays) noday = dfMaxDays;
 
-    double dfint = buyval * 0.0925 / 365 * (noday - 4);
+    // DF Interest: annual rate over the day-count basis, on the days after the
+    // free days.
+    double dfint = buyval * (s.get('dfintrate') / 100) / s.get('dfintbasis')
+        * (noday - dfMinDays);
+
+    // DF Fees: tiered percentage of the buy value, subject to a minimum fee
     double dffee;
-    if (buyval < 100000) {
-      dffee = buyval * 0.003;
-      if (dffee < 10) dffee = 10;
+    if (buyval < s.get('dffeeamt')) {
+      dffee = buyval * (s.get('dffeerate1') / 100);
+      if (dffee < s.get('dfminfee')) dffee = s.get('dfminfee');
     } else {
-      dffee = buyval * 0.002;
+      dffee = buyval * (s.get('dffeerate2') / 100);
     }
-    double dfgstfee = dffee * 0.06;
+
+    // GST on DF fees: follows the "Apply GST/SST" toggle (flag bit4 / 16) and
+    // the global SST/GST rate setting, like the brokerage/clearing GST above.
+    final bool flagNoGst = (flag & 16) != 0;
+    final double dfgstfee = flagNoGst ? 0.0 : dffee * (s.get('gstrate') / 100);
+
     double total = buyval + dfint + dffee + dfgstfee;
     return {'dfint': dfint, 'dffee': dffee, 'dfgstfee': dfgstfee, 'total': total};
   }

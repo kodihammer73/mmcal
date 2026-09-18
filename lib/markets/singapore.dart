@@ -9,10 +9,11 @@ class SingaporeMarket extends ForeignMarket {
   @override bool get flagMinRm12 => false;
   @override bool get flagNoSduty => false;
 
-  static const double localMinOffline = 33;
-  static const double localMinOnline = 27;
-  static const double localMinOnlineSpecial = 14;
-  static const double foreignMin = 6;
+  // Local/foreign brokerage minimums (SGD) - editable in Settings > Singapore
+  double get localMinOffline => s.get('sinminbroff');
+  double get localMinOnline => s.get('sinminbron');
+  double get localMinOnlineSpecial => s.get('sinminbronpromo');
+  double get foreignMin => s.get('sinminforbrk');
 
   @override String? get clearingRateKey => 'sinclrfeerate';
   @override String? get tradingRateKey => 'sintrdfeerate';

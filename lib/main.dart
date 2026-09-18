@@ -7,11 +7,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'config/settings.dart';
 import 'markets/market_registry.dart';
 import 'screens/market_screen.dart';
+import 'screens/portfolio_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/update_required_screen.dart';
 import 'services/admob_service.dart';
 import 'services/form_state.dart';
+import 'services/symbol_lookup.dart';
 import 'services/update_check.dart';
 import 'ui/branding.dart';
 
@@ -24,6 +26,10 @@ void main() async {
   // apparent crash on launch). Fire-and-forget so the UI renders immediately.
   // AdMobService.initialize() is idempotent and already guards against errors.
   unawaited(AdMobService.initialize());
+  // Symbol dictionary: load the on-device copy first (bundled asset or the
+  // last download) so lookups work offline immediately, then fetch the newest
+  // published copy in the background. Fire-and-forget - launch never waits.
+  unawaited(SymbolLookup.instance().then((_) => SymbolLookup.refresh()));
   runApp(const MMCalApp());
 }
 
@@ -51,6 +57,25 @@ class AppColors {
   static const Color sellDark = Color(0xFFF87171);
   static const Color totalDark = Color(0xFF93C5FD);
 }
+
+/// App-bar styling shared by every pushed screen (Settings, Portfolio).
+///
+/// Kept top-level so it can be unit tested. The background MUST be opaque: the
+/// foreground - and therefore the back arrow - is white, so a transparent bar
+/// over the near-white scaffold makes the arrow invisible in light mode. (The
+/// Home screen draws its own gradient header and does not use an AppBar.)
+AppBarTheme buildAppBarTheme(Brightness brightness) => AppBarTheme(
+      backgroundColor:
+          brightness == Brightness.dark ? AppColors.darkPrimary : AppColors.primary,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      centerTitle: false,
+      titleTextStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+      ),
+    );
 
 class MMCalApp extends StatefulWidget {
   const MMCalApp({super.key});
@@ -110,17 +135,7 @@ class _MMCalAppState extends State<MMCalApp> {
       colorScheme: scheme,
       useMaterial3: true,
       scaffoldBackgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        titleTextStyle: TextStyle(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      appBarTheme: buildAppBarTheme(brightness),
 
       cardTheme: CardThemeData(
         elevation: 0,
@@ -365,6 +380,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           ),
                         ),
 
+                        IconButton(
+                          icon: const Icon(Icons.business_center,
+                              color: Colors.white),
+                          tooltip: 'Portfolio',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const PortfolioScreen()),
+                          ),
+                        ),
                         IconButton(
                           icon: Icon(
                             switch (widget.themeMode) {

@@ -9,10 +9,11 @@ class HongKongMarket extends ForeignMarket {
   @override bool get flagMinRm12 => false;
   @override bool get flagNoSduty => false;
 
-  static const double localMinOffline = 110;
-  static const double localMinOnlinePromo = 50;
-  static const double foreignMin = 40;
-  static const double totalMinOnline = 80;
+  // Local/foreign/total brokerage minimums (HKD) - editable in Settings > Hong Kong
+  double get localMinOffline => s.get('hkdminbroff');
+  double get localMinOnlinePromo => s.get('hkdminbronpromo');
+  double get foreignMin => s.get('hkdminforbrk');
+  double get totalMinOnline => s.get('hkdminbrton');
 
   @override String? get clearingRateKey => null;
   @override String? get tradingRateKey => 'hkdtrdfeerate';

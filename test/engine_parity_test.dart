@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_mmcal/config/settings.dart';
 import 'package:flutter_mmcal/engine/engine.dart';
+import 'package:flutter_mmcal/markets/malaysia.dart';
 import 'package:flutter_mmcal/markets/market_registry.dart';
 
 // Minimal settings manager for tests using defaults
@@ -15,6 +16,18 @@ void main() {
   final markets = getAllMarkets(_TestSettings());
 
   Market market(String name) => markets.firstWhere((m) => m.name == name);
+
+  /// Markets built from a settings manager with the given overrides applied,
+  /// so tests can prove a value is read from Settings rather than hardcoded.
+  List<Market> marketsWith(Map<String, double> overrides) {
+    final s = SettingsManager();
+    overrides.forEach(s.set);
+    return getAllMarkets(s);
+  }
+
+  MalaysiaMarket malaysiaWith(Map<String, double> overrides) =>
+      marketsWith(overrides).firstWhere((m) => m.name == 'Malaysia')
+          as MalaysiaMarket;
 
   void check(String label, double actual, double expected, {double tol = 0.01}) {
     expect(actual, closeTo(expected, tol), reason: '$label: expected $expected, got $actual');
@@ -281,17 +294,77 @@ void main() {
     });
 
     test('DF A/C calculation', () {
-      final mm = my as dynamic;
+      final mm = market('Malaysia') as MalaysiaMarket;
       final df = mm.dfAcCalculate(mode: 5, buysel: 1, flag: 0, qty: 1000.0, price: 1.50, noday: 5);
       // base net_value = 1500 + 40 + 2 + 0.45 + 3.20 + 0.04 = 1545.69
-      // dfint = 1545.69 * 0.0925 / 365 * (5-4) = 0.39
-      // dffee = max(1545.69*0.003, 10) = max(4.64, 10) = 10
-      // dfgstfee = 10 * 0.06 = 0.60
-      // total = 1545.69 + 0.39 + 10 + 0.60 = 1556.68
-      check('dfint', df['dfint'], 0.39);
-      check('dffee', df['dffee'], 10);
-      check('dfgstfee', df['dfgstfee'], 0.60);
-      check('total', df['total'], 1556.68);
+      // dfint = 1545.69 * 9.25% / 365 * (5-4) = 0.39
+      // dffee = max(1545.69*0.30%, 10) = max(4.64, 10) = 10
+      // dfgstfee = 10 * 8% (gstrate) = 0.80
+      // total = 1545.69 + 0.39 + 10 + 0.80 = 1556.88
+      check('dfint', df['dfint']!, 0.39);
+      check('dffee', df['dffee']!, 10);
+      check('dfgstfee', df['dfgstfee']!, 0.80);
+      check('total', df['total']!, 1556.88);
+    });
+
+    test('DF A/C GST NOT applied (flag=16)', () {
+      final mm = market('Malaysia') as MalaysiaMarket;
+      final df = mm.dfAcCalculate(mode: 5, buysel: 1, flag: 16, qty: 1000.0, price: 1.50, noday: 5);
+      // GST off -> base net_value = 1500 + 40 + 2 + 0.45 = 1542.45
+      // dfint = 1542.45 * 9.25% / 365 * 1 = 0.39
+      // dffee = max(1542.45*0.30%, 10) = 10, dfgstfee = 0 (toggle off)
+      check('dfint', df['dfint']!, 0.39);
+      check('dffee', df['dffee']!, 10);
+      check('dfgstfee', df['dfgstfee']!, 0);
+      check('total', df['total']!, 1552.84);
+    });
+
+    test('DF A/C GST uses the gstrate setting (6%)', () {
+      final mm = malaysiaWith({'gstrate': 6.0});
+      final df = mm.dfAcCalculate(mode: 5, buysel: 1, flag: 0, qty: 1000.0, price: 1.50, noday: 5);
+      // 6%: base net_value = 1500 + 40 + 2 + 0.45 + 2.40 + 0.03 = 1544.88
+      // dfgstfee = 10 * 6% = 0.60, total = 1544.88 + 0.39 + 10 + 0.60 = 1555.87
+      check('dfgstfee', df['dfgstfee']!, 0.60);
+      check('total', df['total']!, 1555.87);
+    });
+
+    test('DF A/C days use dfmindays / dfmaxdays', () {
+      final mm = malaysiaWith({'dfmindays': 6.0, 'dfmaxdays': 8.0});
+      // 5 days <= dfmindays (6) -> no DF at all
+      final none = mm.dfAcCalculate(mode: 5, buysel: 1, flag: 0, qty: 1000.0, price: 1.50, noday: 5);
+      check('dfint', none['dfint']!, 0);
+      check('dffee', none['dffee']!, 0);
+      check('total', none['total']!, 1545.69);
+
+      // 9 days capped at dfmaxdays (6) -> interest on (6-4) days
+      final capped = mm.dfAcCalculate(mode: 5, buysel: 1, flag: 0, qty: 1000.0, price: 1.50, noday: 9);
+      // dfint = 1545.69 * 9.25% / 365 * (6-4) = 0.78
+      check('dfint', capped['dfint']!, 0.78);
+      check('total', capped['total']!, 1557.27);
+    });
+
+    test('DF A/C fee tiers and min fee use settings', () {
+      // Tier 2 applies above dffeeamt; dfminfee floors tier 1 only.
+      final tiered = malaysiaWith({'dffeeamt': 1000.0, 'dffeerate2': 0.20});
+      final df = tiered.dfAcCalculate(mode: 5, buysel: 1, flag: 0, qty: 1000.0, price: 1.50, noday: 5);
+      // dffee = 1545.69 * 0.20% = 3.09
+      check('dffee', df['dffee']!, 3.09);
+      check('dfgstfee', df['dfgstfee']!, 0.25);
+
+      final floored = malaysiaWith({'dfminfee': 20.0});
+      final df2 = floored.dfAcCalculate(mode: 5, buysel: 1, flag: 0, qty: 1000.0, price: 1.50, noday: 5);
+      // dffee = max(4.64, dfminfee 20) = 20, dfgstfee = 20 * 8% = 1.60
+      check('dffee', df2['dffee']!, 20);
+      check('dfgstfee', df2['dfgstfee']!, 1.60);
+      check('total', df2['total']!, 1567.68);
+    });
+
+    test('DF A/C interest uses dfintrate / dfintbasis', () {
+      final mm = malaysiaWith({'dfintrate': 5.0, 'dfintbasis': 360.0});
+      final df = mm.dfAcCalculate(mode: 5, buysel: 1, flag: 0, qty: 1000.0, price: 1.50, noday: 5);
+      // dfint = 1545.69 * 5% / 360 * 1 = 0.21
+      check('dfint', df['dfint']!, 0.21);
+      check('total', df['total']!, 1556.70);
     });
   });
 
@@ -342,5 +415,320 @@ void main() {
       check('malbrkamt (RM)', calc.get('malbrkamt'), 180);
       check('forbrkamt (EUR)', calc.get('forbrkamt'), 20);
     });
+  });
+
+  // ==========================================================
+  // Per-market brokerage minimums (settings-driven), mirroring
+  // test_minimums.py: defaults must reproduce historical hardcoded values,
+  // and overriding a setting must move the calculated brokerage.
+  // ==========================================================
+  group('Settings-driven minimums', () {
+    test('Defaults reproduce historical hardcoded values', () {
+      final s = SettingsManager();
+      final expected = <String, double>{
+        'sinminbroff': 33, 'sinminbron': 27, 'sinminbronpromo': 14, 'sinminforbrk': 6,
+        'hkdminbroff': 110, 'hkdminbronpromo': 50, 'hkdminforbrk': 40, 'hkdminbrton': 80,
+        'usaminbroff': 24, 'usaminbron': 14, 'usaminforbrk': 4, 'usaminbrtoff': 28,
+        'ukdminbroff': 18, 'ukdminforbrk': 20, 'ukdminbrtcomb': 38, 'ukdminibfee': 20,
+        'ausminbroff': 35, 'ausminforbrk': 20, 'ausminbrtcomb': 55, 'ausminibfee': 20,
+        'japminbroff': 1300, 'japminforbrk': 3000, 'japminbrtcomb': 4300, 'japminibfee': 3000,
+        'germinbroff': 40, 'germinforbrk': 20, 'germinbrtcomb': 60, 'germinibfee': 20,
+        'canminbroff': 95, 'canminbrton': 95, 'canminibfee': 80,
+        'thaminbrtcomb': 840, 'indminbrtcomb': 265000,
+      };
+      expected.forEach((key, value) {
+        check(key, s.get(key), value, tol: 0.0001);
+      });
+    });
+
+    test('Singapore: sinminbroff / sinminbron / sinminbronpromo / sinminforbrk', () {
+      final base = market('Singapore').calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (default)', base.get('malbrkamt'), 16.50);
+
+      final r1 = marketsWith({'sinminbroff': 55.0})
+          .firstWhere((m) => m.name == 'Singapore')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (sinminbroff=55)', r1.get('malbrkamt'), 27.50);
+
+      final r2 = marketsWith({'sinminbron': 66.0})
+          .firstWhere((m) => m.name == 'Singapore')
+          .calculate(mode: 6, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('online malbrkamt (sinminbron=66)', r2.get('malbrkamt'), 33.00);
+
+      final r3 = marketsWith({'sinminbronpromo': 40.0})
+          .firstWhere((m) => m.name == 'Singapore')
+          .calculate(mode: 6, buysel: 1, flag: 2, qty: 100, price: 1.00, rate: 0.50, brkrate: 0.10);
+      check('online special-rate malbrkamt (sinminbronpromo=40)', r3.get('malbrkamt'), 20.00);
+
+      final r4 = marketsWith({'sinminforbrk': 20.0})
+          .firstWhere((m) => m.name == 'Singapore')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline forbrkamt (sinminforbrk=20)', r4.get('forbrkamt'), 20.00);
+    });
+
+    test('Hong Kong: hkdminbroff / hkdminbronpromo / hkdminforbrk / hkdminbrton', () {
+      final base = market('Hong Kong').calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (default)', base.get('malbrkamt'), 55.00);
+      check('offline forbrkamt (default)', base.get('forbrkamt'), 40.00);
+
+      final r1 = marketsWith({'hkdminbroff': 210.0})
+          .firstWhere((m) => m.name == 'Hong Kong')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (hkdminbroff=210)', r1.get('malbrkamt'), 105.00);
+
+      final r2 = marketsWith({'hkdminforbrk': 120.0})
+          .firstWhere((m) => m.name == 'Hong Kong')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline forbrkamt (hkdminforbrk=120)', r2.get('forbrkamt'), 120.00);
+
+      final r3 = marketsWith({'hkdminbronpromo': 52.0})
+          .firstWhere((m) => m.name == 'Hong Kong')
+          .calculate(mode: 6, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('online malbrkamt (hkdminbronpromo=52)', r3.get('malbrkamt'), 26.00);
+
+      final r4 = marketsWith({'hkdminbronpromo': 20.0, 'hkdminforbrk': 10.0, 'hkdminbrton': 80.0})
+          .firstWhere((m) => m.name == 'Hong Kong')
+          .calculate(mode: 6, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('online malbrkamt (local 20 + foreign 10, hkdminbrton=80)', r4.get('malbrkamt'), 35.00);
+    });
+
+    test('United States: usaminbroff / usaminbron / usaminforbrk / usaminbrtoff', () {
+      final base = market('United States (US)').calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (default)', base.get('malbrkamt'), 12.00);
+
+      final r1 = marketsWith({'usaminbroff': 44.0})
+          .firstWhere((m) => m.name == 'United States (US)')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (usaminbroff=44)', r1.get('malbrkamt'), 22.00);
+
+      final r2 = marketsWith({'usaminforbrk': 14.0})
+          .firstWhere((m) => m.name == 'United States (US)')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline forbrkamt (usaminforbrk=14)', r2.get('forbrkamt'), 14.00);
+
+      final r3 = marketsWith({'usaminbrtoff': 58.0})
+          .firstWhere((m) => m.name == 'United States (US)')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (usaminbrtoff=58)', r3.get('malbrkamt'), 27.00);
+
+      final r4 = marketsWith({'usaminbron': 34.0})
+          .firstWhere((m) => m.name == 'United States (US)')
+          .calculate(mode: 6, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('online malbrkamt (usaminbron=34)', r4.get('malbrkamt'), 17.00);
+    });
+
+    test('United Kingdom: ukdminbroff / ukdminforbrk / ukdminbrtcomb / ukdminibfee', () {
+      final base = market('United Kingdom (UK)').calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (default)', base.get('malbrkamt'), 9.00);
+
+      final r1 = marketsWith({'ukdminbroff': 48.0})
+          .firstWhere((m) => m.name == 'United Kingdom (UK)')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ukdminbroff=48)', r1.get('malbrkamt'), 24.00);
+
+      final r2 = marketsWith({'ukdminforbrk': 25.0})
+          .firstWhere((m) => m.name == 'United Kingdom (UK)')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ukdminforbrk=25 -> malbrok 43)', r2.get('malbrkamt'), 11.50);
+
+      final r3 = marketsWith({'ukdminbrtcomb': 78.0})
+          .firstWhere((m) => m.name == 'United Kingdom (UK)')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ukdminbrtcomb=78)', r3.get('malbrkamt'), 29.00);
+
+      final r4 = marketsWith({'ukdminibfee': 30.0})
+          .firstWhere((m) => m.name == 'United Kingdom (UK)')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ukdminibfee=30)', r4.get('malbrkamt'), 4.00);
+    });
+
+    test('Australia: ausminbroff / ausminforbrk / ausminbrtcomb / ausminibfee', () {
+      final base = market('Australia').calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (default)', base.get('malbrkamt'), 17.50);
+
+      final r1 = marketsWith({'ausminbroff': 55.0})
+          .firstWhere((m) => m.name == 'Australia')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ausminbroff=55)', r1.get('malbrkamt'), 27.50);
+
+      final r2 = marketsWith({'ausminforbrk': 25.0})
+          .firstWhere((m) => m.name == 'Australia')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ausminforbrk=25 -> malbrok 60)', r2.get('malbrkamt'), 20.00);
+
+      final r3 = marketsWith({'ausminbrtcomb': 85.0})
+          .firstWhere((m) => m.name == 'Australia')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ausminbrtcomb=85)', r3.get('malbrkamt'), 32.50);
+
+      final r4 = marketsWith({'ausminibfee': 40.0})
+          .firstWhere((m) => m.name == 'Australia')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (ausminibfee=40)', r4.get('malbrkamt'), 7.50);
+    });
+
+    test('Japan: japminbroff / japminforbrk / japminbrtcomb / japminibfee', () {
+      final base = market('Japan').calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (default)', base.get('malbrkamt'), 650.00);
+
+      final r1 = marketsWith({'japminbroff': 1800.0})
+          .firstWhere((m) => m.name == 'Japan')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (japminbroff=1800)', r1.get('malbrkamt'), 900.00);
+
+      final r2 = marketsWith({'japminforbrk': 3600.0})
+          .firstWhere((m) => m.name == 'Japan')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (japminforbrk=3600 -> malbrok 4900)', r2.get('malbrkamt'), 950.00);
+
+      final r3 = marketsWith({'japminbrtcomb': 5300.0})
+          .firstWhere((m) => m.name == 'Japan')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (japminbrtcomb=5300)', r3.get('malbrkamt'), 1150.00);
+
+      final r4 = marketsWith({'japminibfee': 4000.0})
+          .firstWhere((m) => m.name == 'Japan')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (japminibfee=4000)', r4.get('malbrkamt'), 150.00);
+    });
+
+    test('Germany: germinbroff / germinforbrk / germinbrtcomb / germinibfee', () {
+      final base = market('Germany').calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (default)', base.get('malbrkamt'), 20.00);
+
+      final r1 = marketsWith({'germinbroff': 60.0})
+          .firstWhere((m) => m.name == 'Germany')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (germinbroff=60)', r1.get('malbrkamt'), 30.00);
+
+      final r2 = marketsWith({'germinforbrk': 25.0})
+          .firstWhere((m) => m.name == 'Germany')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (germinforbrk=25 -> malbrok 65)', r2.get('malbrkamt'), 22.50);
+
+      final r3 = marketsWith({'germinbrtcomb': 90.0})
+          .firstWhere((m) => m.name == 'Germany')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (germinbrtcomb=90)', r3.get('malbrkamt'), 35.00);
+
+      final r4 = marketsWith({'germinibfee': 30.0})
+          .firstWhere((m) => m.name == 'Germany')
+          .calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('malbrkamt (germinibfee=30)', r4.get('malbrkamt'), 15.00);
+    });
+
+    test('Canada: canminbroff / canminbrton / canminibfee (mode-aware)', () {
+      final base = market('Canada');
+      final baseOff = base.calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      final baseOn = base.calculate(mode: 6, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50);
+      check('offline malbrkamt (default)', baseOff.get('malbrkamt'), 7.50);
+      check('online malbrkamt (default)', baseOn.get('malbrkamt'), 7.50);
+
+      final ca1 = marketsWith({'canminbroff': 115.0}).firstWhere((m) => m.name == 'Canada');
+      check('offline malbrkamt (canminbroff=115)',
+          ca1.calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50).get('malbrkamt'), 17.50);
+      check('online malbrkamt unaffected by canminbroff',
+          ca1.calculate(mode: 6, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50).get('malbrkamt'), 7.50);
+
+      final ca2 = marketsWith({'canminbrton': 125.0}).firstWhere((m) => m.name == 'Canada');
+      check('online malbrkamt (canminbrton=125)',
+          ca2.calculate(mode: 6, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50).get('malbrkamt'), 22.50);
+      check('offline malbrkamt unaffected by canminbrton',
+          ca2.calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50).get('malbrkamt'), 7.50);
+
+      final ca3 = marketsWith({'canminibfee': 60.0}).firstWhere((m) => m.name == 'Canada');
+      check('offline malbrkamt (canminibfee=60)',
+          ca3.calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00, rate: 0.50).get('malbrkamt'), 17.50);
+
+      final ca4 = marketsWith({'canminbroff': 115.0}).firstWhere((m) => m.name == 'Canada');
+      check('offline special-rate malbrkamt (canminbroff=115)',
+          ca4.calculate(mode: 5, buysel: 1, flag: 2, qty: 100, price: 1.00, rate: 0.50, brkrate: 0.20).get('malbrkamt'),
+          17.50);
+      final ca5 = marketsWith({'canminbrton': 125.0}).firstWhere((m) => m.name == 'Canada');
+      check('online special-rate malbrkamt (canminbrton=125)',
+          ca5.calculate(mode: 6, buysel: 1, flag: 2, qty: 100, price: 1.00, rate: 0.50, brkrate: 0.20).get('malbrkamt'),
+          22.50);
+    });
+
+  group('Malaysia Min Brokerage Settings (malminbrk / malminbrk8)', () {
+    final base = market('Malaysia');
+    final s = base.s;
+
+    // Small trade: gross = 100 * 1.00 = 100, offline rate 0.10% => rate-based 0.10.
+    // Without the MIN RM12/RM8 flag there is no tier override, so the brokerage
+    // falls back to the global min offline brokerage (offlinebrk = RM40).
+    test('no min-RM flag: falls back to offlinebrk minimum (RM40)', () {
+      final c = base.calculate(mode: 5, buysel: 1, flag: 0, qty: 100, price: 1.00);
+      check('brkamt', c.get('brkamt'), 40.00);
+    });
+
+    // RM12 tier (flag=1): brokerage floor = malminbrk=12. 0.10 < 12 => 12.
+    test('RM12 tier uses malminbrk=12 (rate-based 0.10 < 12 => 12)', () {
+      final c = base.calculate(
+        mode: 5, buysel: 1, flag: 1, qty: 100, price: 1.00,
+        minBrkOverride: s.get('malminbrk'));
+      check('brkamt', c.get('brkamt'), 12.00);
+    });
+
+    // RM8 tier (flag=1): brokerage floor = malminbrk8=8. 0.10 < 8 => 8.
+    test('RM8 tier uses malminbrk8=8 (rate-based 0.10 < 8 => 8)', () {
+      final c = base.calculate(
+        mode: 5, buysel: 1, flag: 1, qty: 100, price: 1.00,
+        minBrkOverride: s.get('malminbrk8'));
+      check('brkamt', c.get('brkamt'), 8.00);
+    });
+
+    // Custom malminbrk=14 via settings => RM12 tier floor becomes 14.
+    test('custom malminbrk=14 => RM12 floor 14 (rate-based 0.10 < 14)', () {
+      final m = malaysiaWith({'malminbrk': 14.0});
+      final c = m.calculate(
+        mode: 5, buysel: 1, flag: 1, qty: 100, price: 1.00,
+        minBrkOverride: m.s.get('malminbrk'));
+      check('brkamt', c.get('brkamt'), 14.00);
+    });
+
+    // Custom malminbrk8=6 via settings => RM8 tier floor becomes 6.
+    test('custom malminbrk8=6 => RM8 floor 6 (rate-based 0.10 < 6)', () {
+      final m = malaysiaWith({'malminbrk8': 6.0});
+      final c = m.calculate(
+        mode: 5, buysel: 1, flag: 1, qty: 100, price: 1.00,
+        minBrkOverride: m.s.get('malminbrk8'));
+      check('brkamt', c.get('brkamt'), 6.00);
+    });
+
+    // Large trade (>= RM100K): offline rate maloffbrkrate2=0.30% => rate-based
+    // 15000 > floor 12, so the minimum is a floor not a forced amount.
+    test('large trade RM12: rate-based 15000 > floor 12 => 15000 (floor, not forced)', () {
+      final c = base.calculate(
+        mode: 5, buysel: 1, flag: 1, qty: 500000, price: 10.0,
+        minBrkOverride: s.get('malminbrk'));
+      check('brkamt', c.get('brkamt'), 15000.00);
+    });
+
+    // Online mode: rate malonbrkrate1=0.10 for <100K, floor 12 => 12.
+    test('online RM12 tier: rate-based 0.10 < 12 => 12', () {
+      final c = base.calculate(
+        mode: 6, buysel: 1, flag: 1, qty: 100, price: 1.00,
+        minBrkOverride: s.get('malminbrk'));
+      check('brkamt', c.get('brkamt'), 12.00);
+    });
+
+    // Special rate + RM12 (flag=3): brkamtrate=brkrate=0.05, floor=12.
+    // gross=100 => rate-based 0.05 < 12 => 12.
+    test('special+RM12: brkamt = max(0.05%*100=0.05, floor 12) = 12', () {
+      final c = base.calculate(
+        mode: 5, buysel: 1, flag: 3, qty: 100, price: 1.00,
+        brkrate: 0.05, minBrkOverride: s.get('malminbrk'));
+      check('brkamt', c.get('brkamt'), 12.00);
+    });
+
+    // Special rate + RM8 (flag=3): floor=8 => 8.
+    test('special+RM8: brkamt = max(0.05%*100=0.05, floor 8) = 8', () {
+      final c = base.calculate(
+        mode: 5, buysel: 1, flag: 3, qty: 100, price: 1.00,
+        brkrate: 0.05, minBrkOverride: s.get('malminbrk8'));
+      check('brkamt', c.get('brkamt'), 8.00);
+    });
+  });
   });
 }
