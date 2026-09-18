@@ -340,7 +340,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       currency: lot.currency,
       side: lot.side,
       qty: lot.qty,
-      price: lot.qty > 0 ? lot.total / lot.qty : 0,
+      price: lot.effectivePrice,
       total: lot.total,
       existing: lot,
       allTxns: _txns,
@@ -720,7 +720,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
             ],
           ),
           const Divider(height: 1),
-          ...p.lots.map(_buildLot),
+          ...p.lots.map((lot) => _buildLot(lot, p)),
         ],
       ),
     );
@@ -779,11 +779,16 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     );
   }
 
-  Widget _buildLot(PortfolioTxn lot) {
+  /// One transaction row inside an expanded holding. A buy also shows how much
+  /// of it is still held, so a sell knocking off the oldest purchase (FIFO) is
+  /// visible rather than implied.
+  Widget _buildLot(PortfolioTxn lot, PortfolioPosition p) {
     final theme = Theme.of(context);
     final sideColor =
         lot.isBuy ? theme.colorScheme.primary : theme.colorScheme.error;
-    final price = lot.qty > 0 ? lot.total / lot.qty : 0.0;
+    // Contract price when stored; older entries fall back to total / qty.
+    final price = lot.effectivePrice;
+    final openQty = lot.isBuy ? (p.openQtyByLot[lot.id] ?? 0.0) : 0.0;
     return ListTile(
       dense: true,
       leading: Container(
@@ -804,8 +809,19 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         '${_shortDate(lot.date)}   ${_plain(lot.qty)} @ ${_money.format(price)}',
         style: const TextStyle(fontSize: 13),
       ),
-      subtitle: Text('Total ${_money.format(lot.total)} ${lot.currency}',
-          style: theme.textTheme.bodySmall),
+      subtitle: Text(
+        lot.isBuy
+            ? (openQty > 0
+                ? 'Total ${_money.format(lot.total)} ${lot.currency} '
+                    '· ${_plain(openQty)} open'
+                : 'Total ${_money.format(lot.total)} ${lot.currency} · sold')
+            : 'Total ${_money.format(lot.total)} ${lot.currency}',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: lot.isBuy && openQty <= 0
+              ? theme.colorScheme.onSurfaceVariant
+              : null,
+        ),
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

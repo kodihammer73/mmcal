@@ -53,9 +53,11 @@ class PortfolioCodec {
   /// round-trips.
   static String encodeCsv(List<PortfolioTxn> txns) {
     final b = StringBuffer();
-    b.writeln('Market,Currency,Code,Name,Date,Side,Qty,Total,Price');
+    b.writeln('Market,Currency,Code,Name,Date,Side,Qty,Price,Total');
     for (final t in txns) {
-      final price = t.qty > 0 ? t.total / t.qty : 0.0;
+      // Price is the contract price; Total is the net (cost-inclusive) amount,
+      // so Total will not equal Price x Qty when fees were charged.
+      final price = t.effectivePrice;
       b.writeln([
         _csv(t.market),
         _csv(t.currency),
@@ -64,8 +66,8 @@ class PortfolioCodec {
         _csv(t.date),
         _csv(t.side),
         t.qty.toStringAsFixed(4),
-        t.total.toStringAsFixed(2),
         price.toStringAsFixed(4),
+        t.total.toStringAsFixed(2),
       ].join(','));
     }
     return b.toString();

@@ -24,6 +24,7 @@ Built with **Flutter** for **Android** and **iOS**.
 - Live inline validation (no more silent no-op Calculate)
 - Animated results entry with auto scroll-to-results
 - Portfolio tracking - add a trade from the results with `+`, grouped by market then settlement currency, with a per-currency net total (never converted across currencies), auto-averaged buy price, per-line and per-transaction editing, and JSON/CSV export + JSON import
+- Holdings show the **actual buy price** (a weighted average of the purchases still held, excluding costs) plus the **net total** as calculated on the main screen (brokerage, clearing fee and stamp duty included). Sells knock off the **oldest purchase first** (FIFO), so the remaining average reflects what is genuinely still held, and each purchase is tagged open or sold in the expanded row.
 - Last done prices - expanding a line (or "Refresh prices" in the menu) fetches the live price from Yahoo Finance with a Google Finance fallback, showing last price, day change, market value and unrealised P/L per line, plus per-currency Value/P/L totals. Cost totals stay cost-based and currencies are never converted.
 - Code / name suggestions while adding to the portfolio - a curated dictionary bundled offline, refreshed from the project website, with a Yahoo Finance fallback
 - Stock codes and names are always stored upper-cased, and matching ignores case, leading zeros (`700` = `0700`) and trailing dots (`RR.` = `RR`)

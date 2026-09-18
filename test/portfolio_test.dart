@@ -14,6 +14,7 @@ PortfolioTxn tx({
   String side = 'buy',
   double qty = 100,
   double total = 1000,
+  double? price,
 }) =>
     PortfolioTxn(
       id: id ?? PortfolioStore.newId(),
@@ -25,11 +26,125 @@ PortfolioTxn tx({
       side: side,
       qty: qty,
       total: total,
+      price: price,
     );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
+
+  group('FIFO open lots and the displayed average price', () {
+    // Costs stand in for the calculator's net amounts: RM50 on a RM10,000 buy.
+    const netA = 10050.0;
+
+    test('buy, sell then buy again shows the plain contract price', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', date: '2026-09-01', qty: 1000, total: netA, price: 10),
+        tx(id: 'b', code: '1155', date: '2026-09-02', side: 'sell', qty: 1000,
+            total: 10300, price: 10.30),
+        tx(id: 'c', code: '1155', date: '2026-09-03', qty: 1000, total: netA, price: 10),
+      ]).single;
+      expect(p.qty, closeTo(1000, 1e-9));
+      expect(p.avgPrice, closeTo(10.00, 1e-9), reason: 'avg is the buy price');
+      expect(p.cost, closeTo(netA, 1e-6), reason: 'total keeps the net cost');
+      expect(p.lots, hasLength(3));
+    });
+
+    test('two buys average their contract prices', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', date: '2026-09-01', qty: 1000, total: netA, price: 10),
+        tx(id: 'b', code: '1155', date: '2026-09-02', qty: 1000, total: 10250,
+            price: 10.20),
+      ]).single;
+      expect(p.qty, closeTo(2000, 1e-9));
+      expect(p.avgPrice, closeTo(10.10, 1e-9));
+      expect(p.cost, closeTo(20300, 1e-6));
+    });
+
+    test('a sell knocks off the oldest buy first', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', date: '2026-09-01', qty: 1000, total: netA, price: 10),
+        tx(id: 'b', code: '1155', date: '2026-09-02', qty: 1000, total: 10250,
+            price: 10.20),
+        tx(id: 'c', code: '1155', date: '2026-09-03', side: 'sell', qty: 1000,
+            total: 10300, price: 10.30),
+      ]).single;
+      expect(p.qty, closeTo(1000, 1e-9));
+      expect(p.avgPrice, closeTo(10.20, 1e-9), reason: 'only the 10.20 lot is left');
+      expect(p.cost, closeTo(10250, 1e-6));
+      expect(p.openQtyByLot['a'], closeTo(0, 1e-9), reason: 'first buy is sold');
+      expect(p.openQtyByLot['b'], closeTo(1000, 1e-9));
+    });
+
+    test('a partial sell keeps the lot price', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', date: '2026-09-01', qty: 1000, total: netA, price: 10),
+        tx(id: 'b', code: '1155', date: '2026-09-02', side: 'sell', qty: 400,
+            total: 4120, price: 10.30),
+      ]).single;
+      expect(p.qty, closeTo(600, 1e-9));
+      expect(p.avgPrice, closeTo(10.00, 1e-9));
+      expect(p.cost, closeTo(6030, 1e-6), reason: '60% of the net cost remains');
+      expect(p.openQtyByLot['a'], closeTo(600, 1e-9));
+    });
+
+    test('a sell spanning two lots consumes in date order', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', date: '2026-09-01', qty: 1000, total: netA, price: 10),
+        tx(id: 'b', code: '1155', date: '2026-09-02', qty: 1000, total: 10250,
+            price: 10.20),
+        tx(id: 'c', code: '1155', date: '2026-09-03', side: 'sell', qty: 1500,
+            total: 15450, price: 10.30),
+      ]).single;
+      expect(p.qty, closeTo(500, 1e-9));
+      expect(p.avgPrice, closeTo(10.20, 1e-9));
+      expect(p.openQtyByLot['a'], closeTo(0, 1e-9));
+      expect(p.openQtyByLot['b'], closeTo(500, 1e-9));
+    });
+
+    test('overselling is clamped and cannot go negative', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', date: '2026-09-01', qty: 100, total: 1005, price: 10),
+        tx(id: 'b', code: '1155', date: '2026-09-02', side: 'sell', qty: 500,
+            total: 5150, price: 10.30),
+      ]);
+      expect(p, isEmpty, reason: 'the holding is fully cleared, never negative');
+    });
+
+    test('entries saved before the price field fall back to total / qty', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', qty: 1000, total: netA),
+      ]).single;
+      expect(p.avgPrice, closeTo(10.05, 1e-9),
+          reason: 'no stored price, so the cost-inclusive rate is the best guess');
+    });
+
+    test('unrealised P/L is measured against the cost-inclusive total', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', qty: 1000, total: netA, price: 10),
+      ]).single;
+      final q = Quote(
+          price: 10.60,
+          previousClose: 10.50,
+          currency: 'MYR',
+          symbol: '1155.KL',
+          provider: 'yahoo',
+          fetchedAt: DateTime(2026, 9, 18));
+      // 1000 x 10.60 = 10,600 value less the 10,050 actually paid.
+      expect(p.unrealisedPL(q), closeTo(550, 1e-6));
+    });
+
+    test('a sell then re-buy of the same stock stays one line', () {
+      final p = PortfolioStore.aggregate([
+        tx(id: 'a', code: '1155', date: '2026-09-01', qty: 1000, total: netA, price: 10),
+        tx(id: 'b', code: '1155', date: '2026-09-02', side: 'sell', qty: 1000,
+            total: 10300, price: 10.30),
+        tx(id: 'c', code: '1155', date: '2026-09-03', qty: 1000, total: netA, price: 10),
+      ]);
+      expect(p, hasLength(1));
+      expect(p.single.lots, hasLength(3));
+    });
+  });
 
   group('totals', () {
     test('all-MYR positions collapse to one currency total', () {

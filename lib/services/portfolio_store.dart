@@ -37,6 +37,13 @@ class PortfolioTxn {
   /// User-editable so a broker figure variance can be absorbed.
   final double total;
 
+  /// Contract price per unit, excluding costs - what the user actually bought or
+  /// sold at. This is what the portfolio shows as "Avg" (a weighted average of
+  /// the remaining open lots), so it must be stored separately from [total],
+  /// which carries the costs. Null for entries saved before this field existed;
+  /// those fall back to total / qty.
+  final double? price;
+
   final String note;
 
   const PortfolioTxn({
@@ -49,8 +56,14 @@ class PortfolioTxn {
     this.side = 'buy',
     required this.qty,
     required this.total,
+    this.price,
     this.note = '',
   });
+
+  /// The price to use when [price] was never stored (older entries) - the
+  /// cost-inclusive rate, which is the best available approximation.
+  double get effectivePrice =>
+      price ?? (qty > 0 ? total / qty : 0.0);
 
   bool get isBuy => side != 'sell';
 
@@ -68,6 +81,7 @@ class PortfolioTxn {
         side: isBuy ? 'buy' : 'sell',
         qty: qty,
         total: total,
+        price: price,
         note: note,
       );
 
@@ -81,6 +95,7 @@ class PortfolioTxn {
     String? side,
     double? qty,
     double? total,
+    double? price,
     String? note,
   }) {
     return PortfolioTxn(
@@ -93,6 +108,7 @@ class PortfolioTxn {
       side: side ?? this.side,
       qty: qty ?? this.qty,
       total: total ?? this.total,
+      price: price ?? this.price,
       note: note ?? this.note,
     );
   }
@@ -107,6 +123,8 @@ class PortfolioTxn {
         'side': side,
         'qty': qty,
         'total': total,
+        // Omitted when unknown so exports from older data stay clean.
+        if (price != null) 'price': price,
         'note': note,
       };
 
@@ -125,6 +143,7 @@ class PortfolioTxn {
 
     final rawSide = j['side']?.toString().trim().toLowerCase();
     final rawId = j['id']?.toString().trim() ?? '';
+    final price = _asDouble(j['price']);
     return PortfolioTxn(
       id: rawId.isEmpty ? PortfolioStore.newId() : rawId,
       market: market,
@@ -135,6 +154,8 @@ class PortfolioTxn {
       side: rawSide == 'sell' ? 'sell' : 'buy',
       qty: qty,
       total: total,
+      // Absent in files exported before the field existed.
+      price: (price != null && price > 0) ? price : null,
       note: j['note']?.toString() ?? '',
     ).canonical();
   }
@@ -157,15 +178,25 @@ class PortfolioPosition {
   /// Remaining quantity after buys and sells.
   final double qty;
 
-  /// Remaining cost basis in [currency]. Selling reduces this at the running
-  /// average cost, so a sale never changes the average price.
+  /// Remaining cost basis in [currency]: the sum of the net (cost-inclusive)
+  /// totals of the still-open buy lots. Selling knocks off the oldest lots
+  /// first (FIFO), taking their net totals with them.
   final double cost;
+
+  /// Sum of (open qty x contract price) across the open lots - divided by [qty]
+  /// this gives the cost-free average price the user actually bought at.
+  final double priceQty;
 
   /// Most recent transaction date (yyyy-MM-dd) for this position.
   final String lastDate;
 
   /// The underlying transactions, oldest first.
   final List<PortfolioTxn> lots;
+
+  /// Remaining (still-held) qty per buy transaction id, after FIFO consumption.
+  /// Sells and fully-sold buys are absent or zero - the expanded row uses this
+  /// to mark each purchase as open or sold.
+  final Map<String, double> openQtyByLot;
 
   const PortfolioPosition({
     required this.market,
@@ -174,19 +205,25 @@ class PortfolioPosition {
     required this.name,
     required this.qty,
     required this.cost,
+    this.priceQty = 0.0,
     required this.lastDate,
     required this.lots,
+    this.openQtyByLot = const {},
   });
 
-  /// Average price per unit = remaining cost / remaining qty.
-  double get avgPrice => qty > 0 ? cost / qty : 0.0;
+  /// Average contract price of the remaining lots, excluding costs. This is the
+  /// "actual buy price" shown on the portfolio row, so it is NOT cost / qty -
+  /// [cost] carries brokerage, clearing fee and stamp duty, which would inflate
+  /// it (a RM10.00 buy of 1000 units typically costs ~RM10.05 a unit all-in).
+  double get avgPrice => qty > 0 ? priceQty / qty : 0.0;
 
   /// Market value at the last done price, in [currency].
   double marketValue(Quote q) => qty * q.price;
 
-  /// Unrealised profit/loss at the last done price, in [currency]. Selling
-  /// reduces cost at the running average, so partially-sold lines stay correct.
-  double unrealisedPL(Quote q) => (q.price - avgPrice) * qty;
+  /// Unrealised profit/loss at the last done price, in [currency]. Measured
+  /// against the cost-inclusive [cost], so it is the true profit if the
+  /// position were closed at the last price.
+  double unrealisedPL(Quote q) => marketValue(q) - cost;
 
   /// Key used to store this position's fetched quote.
   String get quoteKey => '$market/$code';
@@ -526,33 +563,47 @@ class PortfolioStore {
       }
 
       if (t.isBuy) {
-        target.qty += t.qty;
-        target.cost += t.total;
+        // Buys open a lot: its own qty, contract price and net total.
+        target.open.add(_OpenLot(
+          id: t.id,
+          qty: t.qty,
+          price: t.effectivePrice,
+          total: t.total,
+        ));
+        target.openQty[t.id] = t.qty;
       } else {
-        final avg = target.qty > 0 ? target.cost / target.qty : 0.0;
+        // Sells consume the oldest lots first (FIFO), so the remaining average
+        // price is the average of what is genuinely still held. Overselling is
+        // clamped to what is held.
         var reduce = t.qty;
-        if (reduce > target.qty) reduce = target.qty;
-        target.qty -= reduce;
-        target.cost -= avg * reduce;
-        if (target.qty <= _qtyEpsilon) {
-          target.qty = 0;
-          target.cost = 0;
+        while (reduce > _qtyEpsilon && target.open.isNotEmpty) {
+          final lot = target.open.first;
+          final take = reduce < lot.qty ? reduce : lot.qty;
+          // Shrink the lot pro rata so a partially-sold lot keeps its price.
+          lot.total -= lot.total * (take / lot.qty);
+          lot.qty -= take;
+          reduce -= take;
+          target.openQty[lot.id] = lot.qty <= _qtyEpsilon ? 0.0 : lot.qty;
+          if (lot.qty <= _qtyEpsilon) target.open.removeAt(0);
         }
       }
       target.lots.add(t);
     }
 
     final positions = work
-        .where((w) => w.qty > _qtyEpsilon)
+        .where((w) => w.open.any((l) => l.qty > _qtyEpsilon))
         .map((w) => PortfolioPosition(
               market: w.market,
               currency: w.currency,
               code: w.code,
               name: w.name,
-              qty: w.qty,
-              cost: w.cost,
+              // Remaining qty and cost basis come from the open lots only.
+              qty: w.open.fold(0.0, (a, l) => a + l.qty),
+              cost: w.open.fold(0.0, (a, l) => a + l.total),
+              priceQty: w.open.fold(0.0, (a, l) => a + l.qty * l.price),
               lastDate: w.lastDate,
               lots: List<PortfolioTxn>.unmodifiable(w.lots),
+              openQtyByLot: Map<String, double>.unmodifiable(w.openQty),
             ))
         .toList();
 
@@ -699,9 +750,14 @@ class _Working {
   String code;
   String name;
   String lastDate;
-  double qty = 0;
-  double cost = 0;
   final List<PortfolioTxn> lots = [];
+
+  /// Buys that are still held, oldest first. A sell consumes from the front
+  /// (FIFO), which is what makes a sale knock off the earliest purchase.
+  final List<_OpenLot> open = [];
+
+  /// Remaining qty per buy transaction id, for the expanded row's open/sold tag.
+  final Map<String, double> openQty = {};
 
   /// Accumulated identity tokens, so a later lot can match on either the code
   /// or the name seen on any earlier lot of the same holding.
@@ -717,6 +773,22 @@ class _Working {
   }) {
     if (tokens != null) this.tokens.addAll(tokens);
   }
+}
+
+/// One still-held buy: its remaining qty, its contract price per unit and its
+/// remaining net (cost-inclusive) total.
+class _OpenLot {
+  final String id;
+  double qty;
+  final double price;
+  double total;
+
+  _OpenLot({
+    required this.id,
+    required this.qty,
+    required this.price,
+    required this.total,
+  });
 }
 
 

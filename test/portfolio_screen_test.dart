@@ -36,6 +36,7 @@ PortfolioTxn txn({
   String side = 'buy',
   required double qty,
   required double total,
+  double? price,
 }) =>
     PortfolioTxn(
       id: id,
@@ -47,6 +48,7 @@ PortfolioTxn txn({
       side: side,
       qty: qty,
       total: total,
+      price: price,
     );
 
 /// Pumps a screen with a button that opens the add/edit sheet.
@@ -244,6 +246,50 @@ void main() {
     expect(find.textContaining('P/L +1,160.00 MYR'), findsOneWidget);
     expect(find.text('Value (MYR)'), findsOneWidget);
     expect(find.text('P/L (MYR)'), findsOneWidget);
+  });
+
+  testWidgets('the row shows the contract average price, not the cost rate',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await PortfolioStore.clearAll();
+    // 1,000 units bought at RM10 with RM50 of costs: net 10,050.
+    await PortfolioStore.saveAll([
+      txn(id: 'a', market: 'Malaysia', currency: 'MYR', code: '1155', name: 'Maybank', date: '2026-09-01', qty: 1000, total: 10050, price: 10),
+    ]);
+    await tester.pumpWidget(const MaterialApp(home: PortfolioScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Avg 10.00'), findsOneWidget);
+    expect(find.textContaining('Avg 10.05'), findsNothing);
+    // 10,050.00 is both the line's total and the currency total.
+    expect(find.text('10,050.00'), findsNWidgets(2), reason: 'net total kept');
+
+    // Expanding reveals each buy, marked open or sold.
+    await tester.tap(find.text('1155'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1000 open'), findsOneWidget);
+  });
+
+  testWidgets('a sell knocks off the oldest buy and the row follows FIFO',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await PortfolioStore.clearAll();
+    await PortfolioStore.saveAll([
+      txn(id: 'a', market: 'Malaysia', currency: 'MYR', code: '1155', name: 'Maybank', date: '2026-09-01', qty: 1000, total: 10050, price: 10),
+      txn(id: 'b', market: 'Malaysia', currency: 'MYR', code: '1155', name: 'Maybank', date: '2026-09-02', qty: 1000, total: 10250, price: 10.20),
+      txn(id: 'c', market: 'Malaysia', currency: 'MYR', code: '1155', name: 'Maybank', date: '2026-09-03', side: 'sell', qty: 1000, total: 10300, price: 10.30),
+    ]);
+    await tester.pumpWidget(const MaterialApp(home: PortfolioScreen()));
+    await tester.pumpAndSettle();
+
+    // Only the 10.20 lot is still held.
+    expect(find.textContaining('Avg 10.20'), findsOneWidget);
+    expect(find.textContaining('Qty 1000'), findsOneWidget);
+
+    await tester.tap(find.text('1155'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('sold'), findsOneWidget);
+    expect(find.textContaining('1000 open'), findsOneWidget);
   });
 
   testWidgets('buy sheet saves and enables Save', (tester) async {

@@ -15,6 +15,7 @@ PortfolioTxn tx({
   String side = 'buy',
   double qty = 100,
   double total = 1000,
+  double? price,
 }) =>
     PortfolioTxn(
       id: id ?? PortfolioStore.newId(),
@@ -26,6 +27,7 @@ PortfolioTxn tx({
       side: side,
       qty: qty,
       total: total,
+      price: price,
     );
 
 void main() {
@@ -127,9 +129,19 @@ void main() {
         tx(id: 'a', code: '1155', name: 'Maybank', qty: 1000, total: 9200),
       ]);
       final lines = csv.trim().split('\n');
-      expect(lines.first, 'Market,Currency,Code,Name,Date,Side,Qty,Total,Price');
+      expect(lines.first, 'Market,Currency,Code,Name,Date,Side,Qty,Price,Total');
       expect(lines, hasLength(2));
-      expect(lines[1], startsWith('Malaysia,MYR,1155,Maybank,2026-08-01,buy,1000.0000,9200.00,'));
+      expect(lines[1],
+          startsWith('Malaysia,MYR,1155,Maybank,2026-08-01,buy,1000.0000,'));
+    });
+
+    test('price is the contract price while total stays cost-inclusive', () {
+      final csv = PortfolioCodec.encodeCsv([
+        tx(id: 'a', code: '1155', name: 'Maybank', qty: 1000, total: 10050, price: 10),
+      ]);
+      final row = csv.trim().split('\n')[1].split(',');
+      expect(row[7], '10.0000', reason: 'price excludes the costs');
+      expect(row[8], '10050.00', reason: 'total is the net amount paid');
     });
 
     test('quotes fields containing commas', () {

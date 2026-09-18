@@ -1,8 +1,10 @@
 name: iOS Build & Publish
 
 on:
+  # Release builds run on version tags only. A plain push to main does NOT run
+  # this workflow, so routine commits do not burn macOS runner minutes - tag a
+  # release (v*) when a signed build + App Store upload is actually wanted.
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]

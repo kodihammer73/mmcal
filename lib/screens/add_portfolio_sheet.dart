@@ -219,6 +219,13 @@ class _PortfolioEntrySheetState extends State<_PortfolioEntrySheet> {
       side: widget.side,
       qty: widget.qty,
       total: _parsedTotal!,
+      // The contract price from the calculator - deliberately NOT total / qty,
+      // which would bake the costs into the price the portfolio averages.
+      // An edit keeps whatever price the record already carries (null for
+      // records saved before the field existed).
+      price: widget.existing == null
+          ? (widget.price > 0 ? widget.price : null)
+          : widget.existing!.price,
       note: widget.existing?.note ?? '',
     ).canonical();
     Navigator.of(context).pop(PortfolioEntryOutcome.save(txn));
