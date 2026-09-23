@@ -383,7 +383,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         IconButton(
                           icon: const Icon(Icons.business_center,
                               color: Colors.white),
-                          tooltip: 'Portfolio',
+                          tooltip: 'Portfolio log (record of your own trades)',
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(

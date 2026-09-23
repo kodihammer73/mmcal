@@ -436,10 +436,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         leading: const BackButton(),
         backgroundColor: Colors.transparent,
         flexibleSpace: _appBarGradient(context),
-        title: const Text('Portfolio'),
+        title: const Text('Portfolio Log'),
         actions: [
           PopupMenuButton<String>(
-            tooltip: 'Portfolio options',
+            tooltip: 'Portfolio log options',
             onSelected: (v) {
               if (v == 'json') {
                 _exportJson();
@@ -499,8 +499,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             Text(
-              'Calculate a trade, then tap + next to Copy on the results '
-              'to add it here.',
+              'The Portfolio Log is a manual, on-device record of your own '
+              'past transactions - record-keeping only. MMCal cannot place '
+              'orders. Calculate a trade, then tap + next to Copy on the '
+              'results to add it here.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -744,6 +746,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
             children: [
               Text('Last ${_money.format(q.price)} ${q.currency}',
                   style: theme.textTheme.bodySmall),
+              const SizedBox(width: 8),
+              Text('(reference price)',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(fontStyle: FontStyle.italic)),
               const SizedBox(width: 8),
               Text(
                 '${chg >= 0 ? '+' : ''}${_money.format(chg)} '
