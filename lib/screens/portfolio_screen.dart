@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../config/settings.dart';
+import '../engine/engine.dart';
 import '../main.dart';
+import '../markets/market_registry.dart';
 import '../services/portfolio_codec.dart';
 import '../services/portfolio_store.dart';
 import '../services/portfolio_transfer.dart';
 import '../services/quote_service.dart';
 import '../services/symbol_lookup.dart';
 import '../ui/branding.dart';
+import '../ui/sparkline.dart';
 import '../ui/stock_identifier_field.dart';
 import 'add_portfolio_sheet.dart';
 
@@ -46,6 +51,19 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
 
   /// Guards against two automatic passes running at once.
   bool _pricePassRunning = false;
+
+  /// Sell what-if percentage per position (quoteKey -> selected pct).
+  final Map<String, int> _whatIfPct = {};
+
+  /// 30-day closes per position (quoteKey), fetched lazily on expand.
+  final Map<String, List<double>> _history = {};
+
+  /// Positions whose history was already requested this session.
+  final Set<String> _histFetched = {};
+
+  /// Portfolio filter text and sort key ('market' | 'value' | 'pl').
+  final TextEditingController _filterCtrl = TextEditingController();
+  String _sort = 'market';
 
   @override
   void initState() {
@@ -124,7 +142,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     }
     // Only the manual action reports back; the automatic pass on screen open
     // is silent (prices just appear).
-    if (force && mounted) _snack('Prices updated.');
+    if (force && mounted) {
+      HapticFeedback.mediumImpact();
+      _snack('Prices updated.');
+    }
   }
 
   /// Distinct open positions from the current ledger, in display order.
@@ -135,6 +156,24 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  /// SnackBar with a 6-second Undo that restores [snapshot] as the ledger.
+  void _snackUndo(String message, List<PortfolioTxn> snapshot) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            await PortfolioStore.saveAll(snapshot);
+            await _refresh();
+          },
+        ),
+      ),
     );
   }
 
@@ -258,9 +297,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       ),
     );
     if (ok != true) return;
+    final snapshot = List<PortfolioTxn>.of(_txns);
     await PortfolioStore.clearAll();
     await _refresh();
-    _snack('Portfolio cleared.');
+    _snackUndo('Portfolio cleared.', snapshot);
   }
 
   // ----------------------------------------------------------------
@@ -361,48 +401,20 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     _snack('Transaction updated.');
   }
 
+  /// Deletes the whole line immediately and offers a 6-second Undo.
   Future<void> _deleteWholeLine(PortfolioPosition p) async {
-    final ok = await _confirmDelete(
-      'Delete ${p.displayName}?',
-      'Removes all ${p.lots.length} transaction(s) for this stock.',
-    );
-    if (!ok) return;
+    final snapshot = List<PortfolioTxn>.of(_txns);
     await PortfolioStore.deletePosition(_txns, p);
     await _refresh();
-    _snack('Line deleted.');
+    _snackUndo('Line deleted.', snapshot);
   }
 
+  /// Deletes one transaction immediately and offers a 6-second Undo.
   Future<void> _deleteLot(PortfolioTxn lot) async {
-    final ok = await _confirmDelete(
-      'Delete this transaction?',
-      '${_shortDate(lot.date)} - ${lot.isBuy ? 'Buy' : 'Sell'} '
-      '${_plain(lot.qty)} @ ${_money.format(lot.qty > 0 ? lot.total / lot.qty : 0)}',
-    );
-    if (!ok) return;
+    final snapshot = List<PortfolioTxn>.of(_txns);
     await PortfolioStore.delete(lot.id);
     await _refresh();
-    _snack('Transaction deleted.');
-  }
-
-  Future<bool> _confirmDelete(String title, String body) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
+    _snackUndo('Transaction deleted.', snapshot);
   }
 
   /// Matches the Home header gradient so pushed screens feel continuous.
@@ -473,14 +485,123 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           ? const Center(child: CircularProgressIndicator())
           : groups.isEmpty
               ? _emptyState()
-              : ListView(
-                  padding: const EdgeInsets.all(12),
+              : Column(
                   children: [
-                    ...groups.map(_buildGroup),
-                    _buildTotals(totals),
+                    _buildFilterBar(),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: () => _refreshPrices(force: true),
+                        child: _buildList(groups, totals),
+                      ),
+                    ),
                   ],
                 ),
     );
+  }
+
+  /// Filter field + sort menu shown above the holdings list.
+  Widget _buildFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _filterCtrl,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Filter',
+                hintText: 'Code or name',
+                prefixIcon: Icon(Icons.search, size: 20),
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Sort holdings',
+            icon: const Icon(Icons.sort),
+            onSelected: (v) => setState(() => _sort = v),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'market', child: Text('Sort: Market')),
+              PopupMenuItem(value: 'value', child: Text('Sort: Value')),
+              PopupMenuItem(value: 'pl', child: Text('Sort: P/L %')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildList(List<PortfolioGroup> groups, PortfolioTotals totals) {
+    final filtered = _filteredGroups(groups);
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              'No holdings match the filter.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          )
+        else ...[
+          ...filtered.map(_buildGroup),
+          _buildTotals(totals),
+        ],
+      ],
+    );
+  }
+
+  /// Applies the filter box and the sort menu to the grouped positions.
+  /// Totals are always computed over ALL positions, so filtering only hides
+  /// lines - it never changes the money.
+  List<PortfolioGroup> _filteredGroups(List<PortfolioGroup> groups) {
+    final f = _filterCtrl.text.trim().toLowerCase();
+    Iterable<PortfolioGroup> out = groups;
+    if (f.isNotEmpty) {
+      out = groups
+          .map((g) => PortfolioGroup(
+                market: g.market,
+                currency: g.currency,
+                positions: g.positions
+                    .where((p) =>
+                        p.code.toLowerCase().contains(f) ||
+                        p.name.toLowerCase().contains(f))
+                    .toList(),
+              ))
+          .where((g) => g.positions.isNotEmpty);
+    }
+    if (_sort == 'market') return out.toList();
+    double valueFor(PortfolioPosition p) {
+      final q = _quotes[p.quoteKey];
+      return q == null ? -1 : p.marketValue(q);
+    }
+
+    double plFor(PortfolioPosition p) {
+      final q = _quotes[p.quoteKey];
+      if (q == null || p.cost <= 0) return double.negativeInfinity;
+      return p.unrealisedPL(q) / p.cost;
+    }
+
+    final cmp = _sort == 'value'
+        ? (PortfolioPosition a, PortfolioPosition b) =>
+            valueFor(b).compareTo(valueFor(a))
+        : (PortfolioPosition a, PortfolioPosition b) =>
+            plFor(b).compareTo(plFor(a));
+    return out
+        .map((g) => PortfolioGroup(
+              market: g.market,
+              currency: g.currency,
+              positions: [...g.positions]..sort(cmp),
+            ))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    _filterCtrl.dispose();
+    super.dispose();
   }
 
   Widget _emptyState() {
@@ -704,6 +825,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         ),
         children: [
           _buildQuoteLine(p),
+          _buildWhatIf(p),
           Row(
             children: [
               TextButton.icon(
@@ -734,9 +856,21 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   Widget _buildQuoteLine(PortfolioPosition p) {
     final q = _quotes[p.quoteKey];
     if (q == null) return const SizedBox.shrink();
+    // Lazily top up the 30-day history the first time this line is expanded.
+    _fetchHistoryFor(p);
     final theme = Theme.of(context);
-    final chg = q.change;
     final pl = p.unrealisedPL(q);
+    final pct = p.cost > 0 ? pl / p.cost * 100 : null;
+    final plLabel = pct == null
+        ? 'P/L ${pl >= 0 ? '+' : ''}${_money.format(pl)} ${p.currency}'
+        : 'P/L ${pl >= 0 ? '+' : ''}${_money.format(pl)} ${p.currency} '
+            '(${pl >= 0 ? '+' : ''}${pct.toStringAsFixed(1)}%)';
+    final plColor = pl > 0
+        ? Colors.green.shade700
+        : pl < 0
+            ? theme.colorScheme.error
+            : null;
+    final hist = _history[p.quoteKey];
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -750,17 +884,6 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
               Text('(reference price)',
                   style: theme.textTheme.bodySmall
                       ?.copyWith(fontStyle: FontStyle.italic)),
-              const SizedBox(width: 8),
-              Text(
-                '${chg >= 0 ? '+' : ''}${_money.format(chg)} '
-                '(${chg >= 0 ? '+' : ''}${q.changePercent.toStringAsFixed(1)}%)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: chg >= 0
-                      ? Colors.green.shade700
-                      : theme.colorScheme.error,
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 2),
@@ -770,19 +893,147 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                   style: theme.textTheme.bodySmall),
               const SizedBox(width: 10),
               Text(
-                'P/L ${pl >= 0 ? '+' : ''}${_money.format(pl)} ${p.currency}',
+                plLabel,
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: pl >= 0
-                      ? Colors.green.shade700
-                      : theme.colorScheme.error,
+                  color: plColor,
                 ),
               ),
             ],
           ),
+          if (hist != null && hist.length >= 2) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Sparkline(closes: hist),
+                const SizedBox(width: 8),
+                Text('30 days',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Fetches the 30-day daily closes for [p] once per session (QuoteService
+  /// caches them for an hour). Empty/failed history simply never appears.
+  Future<void> _fetchHistoryFor(PortfolioPosition p) async {
+    final service = _quoteService;
+    if (service == null ||
+        _history.containsKey(p.quoteKey) ||
+        _histFetched.contains(p.quoteKey)) {
+      return;
+    }
+    _histFetched.add(p.quoteKey);
+    final closes = await service.history(p.market, p.code);
+    if (closes.isEmpty || !mounted) return;
+    setState(() => _history[p.quoteKey] = closes);
+  }
+
+  /// Sell what-if preview: estimated net proceeds and realised P/L for selling
+  /// a slice of the holding at the last reference price, using the market's
+  /// real fee engine. Preview only - nothing is saved, no order is placed.
+  Widget _buildWhatIf(PortfolioPosition p) {
+    final q = _quotes[p.quoteKey];
+    if (q == null || p.qty <= 0) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    const pcts = [25, 50, 75, 100];
+    final sel = _whatIfPct[p.quoteKey] ?? 100;
+    final qty = p.qty * sel / 100.0;
+    final est = _whatIfEstimate(p, qty, q.price);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Sell what-if',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final pc in pcts)
+                ChoiceChip(
+                  label: Text('$pc%'),
+                  selected: pc == sel,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => _whatIfPct[p.quoteKey] = pc),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (est != null) ...[
+            Text(
+              'Sell ${_plain(qty)} @ ${_money.format(q.price)} '
+              '${p.currency} -> net ~${_money.format(est.$1)} ${p.currency}',
+              style: theme.textTheme.bodySmall,
+            ),
+            Text(
+              'Realised P/L ~${est.$2 >= 0 ? '+' : ''}'
+              '${_money.format(est.$2)} ${p.currency}'
+              '${p.cost > 0 ? ' (${est.$2 >= 0 ? '+' : ''}${(est.$2 / (p.cost * sel / 100.0)).toStringAsFixed(1)}%)' : ''}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: est.$2 > 0
+                    ? Colors.green.shade700
+                    : est.$2 < 0
+                        ? theme.colorScheme.error
+                        : null,
+              ),
+            ),
+          ],
+          Text('Estimate only - the app cannot place orders.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(fontStyle: FontStyle.italic)),
+        ],
+      ),
+    );
+  }
+
+  /// Net proceeds (settlement currency) and realised P/L for selling [qty] at
+  /// [price], computed with the market's real online fee schedule. GST is not
+  /// applied (the app's default), matching the calculator's default state.
+  (double, double)? _whatIfEstimate(
+      PortfolioPosition p, double qty, double price) {
+    if (qty <= 0 || price <= 0) return null;
+    SettingsManager s;
+    try {
+      s = SettingsManager.instance;
+    } catch (_) {
+      s = SettingsManager(); // defaults (tests)
+    }
+    Market? m;
+    for (final mk in getAllMarkets(s)) {
+      if (mk.name == p.market) {
+        m = mk;
+        break;
+      }
+    }
+    if (m == null) return null;
+    // Foreign holdings stored in local currency estimate in local currency
+    // (settle-in-local, rate 1.0); MYR-settled holdings estimate in MYR.
+    final local = p.currency != 'MYR';
+    final flag = 16 | (local ? 8 : 0);
+    final calc = m.calculate(
+        mode: 6,
+        buysel: 2,
+        flag: flag,
+        qty: qty,
+        price: price,
+        rate: 1.0,
+        brkrate: 0);
+    final net = p.market == 'Malaysia'
+        ? calc.get('val1')
+        : local
+            ? calc.get('val2')
+            : calc.get('net_value');
+    final costSlice = p.cost * qty / p.qty;
+    return (net, net - costSlice);
   }
 
   /// One transaction row inside an expanded holding. A buy also shows how much

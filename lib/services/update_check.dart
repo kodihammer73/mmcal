@@ -1,4 +1,6 @@
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Result of a remote update check.
@@ -80,6 +82,11 @@ class UpdateChecker {
     required String installedVersion,
     String? url,
   }) async {
+    // iOS ships without the remote forced-update gate: an App Store build must
+    // never be blocked by a remotely-configured screen. The Play build keeps it.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      return _noUpdate(installedVersion);
+    }
     final target = url ?? configUrl;
     try {
       final res = await http

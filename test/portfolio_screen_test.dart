@@ -243,7 +243,9 @@ void main() {
     expect(find.textContaining('Last 10.36 MYR'), findsOneWidget);
     // Value = 1000 x 10.36; P/L = (10.36 - 9.20) x 1000.
     expect(find.textContaining('Value 10,360.00 MYR'), findsOneWidget);
-    expect(find.textContaining('P/L +1,160.00 MYR'), findsOneWidget);
+    expect(find.textContaining('P/L +1,160.00 MYR (+12.6%)'), findsOneWidget);
+    // The day-change chip is gone (quote 10.36 vs previous close 10.42).
+    expect(find.textContaining('(-0.6'), findsNothing);
     expect(find.text('Value (MYR)'), findsOneWidget);
     expect(find.text('P/L (MYR)'), findsOneWidget);
   });
@@ -454,5 +456,72 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PortfolioScreen), findsNothing);
     expect(find.text('go'), findsOneWidget);
+  });
+
+  testWidgets('deleting a line offers Undo that restores it', (tester) async {
+    QuoteService.networkEnabled = false;
+    SharedPreferences.setMockInitialValues({});
+    await PortfolioStore.clearAll();
+    await PortfolioStore.saveAll([
+      txn(id: 'a', market: 'Malaysia', currency: 'MYR', code: '1155', name: 'Maybank', date: '2026-08-01', qty: 1000, total: 9200),
+    ]);
+    await tester.pumpWidget(const MaterialApp(home: PortfolioScreen()));
+    await tester.pumpAndSettle();
+
+    // No confirmation dialog: the line goes immediately, Undo appears.
+    await tester.tap(find.text('1155'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete line'));
+    await tester.pumpAndSettle();
+    expect(find.text('No holdings yet'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(find.text('1155'), findsOneWidget);
+  });
+
+  testWidgets('sell what-if estimates net proceeds for a slice',
+      (tester) async {
+    QuoteService.debugSetShared(QuoteService(
+        SymbolLookup.parse(
+            '{"version":1,"markets":{"Malaysia":{"currency":"MYR","suffix":".KL"}},"symbols":[]}'),
+        httpClient: MockClient((req) async => http.Response(
+            jsonEncode({
+              'chart': {
+                'result': [
+                  {
+                    'meta': {
+                      'currency': 'MYR',
+                      'symbol': '1155.KL',
+                      'regularMarketPrice': 10.36,
+                      'chartPreviousClose': 10.42
+                    }
+                  }
+                ],
+                'error': null
+              }
+            }),
+            200))));
+    QuoteService.networkEnabled = true;
+    SharedPreferences.setMockInitialValues({});
+    await PortfolioStore.clearAll();
+    await PortfolioStore.saveAll([
+      txn(id: 'a', market: 'Malaysia', currency: 'MYR', code: '1155', name: 'Maybank', date: '2026-08-01', qty: 1000, total: 9200, price: 9.20),
+    ]);
+    await tester.pumpWidget(const MaterialApp(home: PortfolioScreen()));
+    await tester.pumpAndSettle();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1155'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sell what-if'), findsOneWidget);
+    expect(find.textContaining('Estimate only'), findsOneWidget);
+
+    await tester.tap(find.text('50%'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Sell 500 @ 10.36'), findsOneWidget);
+    expect(find.textContaining('net ~'), findsOneWidget);
+    expect(find.textContaining('Realised P/L ~'), findsOneWidget);
   });
 }

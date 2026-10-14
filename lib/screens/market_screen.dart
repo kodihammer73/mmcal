@@ -209,6 +209,7 @@ class _MarketScreenState extends State<MarketScreen> {
   void _calculate() {
     // Dismiss the keyboard when Calculate or any quick button is pressed.
     FocusManager.instance.primaryFocus?.unfocus();
+    HapticFeedback.lightImpact();
     double qty = double.tryParse(_qtyCtrl.text) ?? 0;
 
     double buy = double.tryParse(_buyCtrl.text) ?? 0;

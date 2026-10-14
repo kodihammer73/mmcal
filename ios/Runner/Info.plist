@@ -4,10 +4,6 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<!-- AdMob App ID (from the AdMob console "App settings" page). -->
-	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-7952779601826703~2032010773</string>
-
 	<key>CFBundleDevelopmentRegion</key>
 
 	<string>$(DEVELOPMENT_LANGUAGE)</string>

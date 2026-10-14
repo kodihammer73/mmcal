@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../services/portfolio_store.dart';
@@ -208,6 +209,7 @@ class _PortfolioEntrySheetState extends State<_PortfolioEntrySheet> {
   }
 
   void _save() {
+    HapticFeedback.lightImpact();
     if (_error != null) return;
     final txn = PortfolioTxn(
       id: widget.existing?.id ?? PortfolioStore.newId(),

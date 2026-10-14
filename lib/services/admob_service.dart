@@ -16,6 +16,11 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 class AdMobService {
   AdMobService._();
 
+  /// Ads are Android-only: the iOS build ships without AdMob (no SDK init, no
+  /// banner, no ad unit ids) so the App Store binary carries no ad config.
+  static bool get adsEnabled =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   /// Your real AdMob banner ad unit IDs go here.
   static const String bannerAdUnitIdAndroid =
       'ca-app-pub-7952779601826703/9359002306';
@@ -47,6 +52,7 @@ class AdMobService {
 
   /// Initializes the Google Mobile Ads SDK. Call this once at app startup.
   static Future<void> initialize() async {
+    if (!adsEnabled) return;
     if (_isInitialized) return;
     try {
       await MobileAds.instance.initialize();
@@ -59,6 +65,7 @@ class AdMobService {
 
   /// Loads a banner ad. Call this after the SDK is initialized.
   static Future<void> loadBannerAd() async {
+    if (!adsEnabled) return;
     if (!_isInitialized) {
       await initialize();
     }

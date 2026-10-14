@@ -60,6 +60,9 @@ class QuoteService {
   /// Session cache lifetime - quotes are only ever a reference price.
   static const Duration _cacheTtl = Duration(seconds: 60);
 
+  /// Cache lifetime for 30-day history (sparkline data).
+  static const Duration _histTtl = Duration(hours: 1);
+
   static const String _yahooChartUrl =
       'https://query1.finance.yahoo.com/v8/finance/chart/';
 
@@ -86,6 +89,9 @@ class QuoteService {
 
   /// market/code -> cached quote with its fetch time.
   final Map<String, ({Quote quote, DateTime at})> _cache = {};
+
+  /// Yahoo symbol -> cached 30-day closes with their fetch time.
+  final Map<String, ({List<double> closes, DateTime at})> _histCache = {};
 
   QuoteService(this.lookup, {http.Client? httpClient})
       : _defaultClient = httpClient;
@@ -126,6 +132,52 @@ class QuoteService {
 
   /// Drops the session cache, e.g. when the user taps Refresh prices.
   void clearCache() => _cache.clear();
+
+  /// 30-day daily closes for a market/code (Yahoo chart endpoint, the same
+  /// source as [fetch]), cached for an hour per Yahoo symbol. Returns an
+  /// empty list on any failure - a missing sparkline is fine.
+  Future<List<double>> history(String market, String code,
+      {http.Client? client}) async {
+    if (!networkEnabled || code.trim().isEmpty) return const [];
+    final symbol = yahooSymbol(market, code.trim());
+    if (symbol.isEmpty) return const [];
+    final hit = _histCache[symbol];
+    if (hit != null && DateTime.now().difference(hit.at) < _histTtl) {
+      return hit.closes;
+    }
+    final ownsClient = client == null && _defaultClient == null;
+    final http.Client c = client ?? _defaultClient ?? http.Client();
+    try {
+      final res = await c
+          .get(Uri.parse('$_yahooChartUrl$symbol?range=1mo&interval=1d'),
+              headers: const {'User-Agent': 'Mozilla/5.0'})
+          .timeout(_timeout);
+      if (res.statusCode != 200) return const [];
+      final dynamic data = jsonDecode(res.body);
+      final result = _chain(data, ['chart', 'result']);
+      if (result is! List || result.isEmpty || result.first is! Map) {
+        return const [];
+      }
+      final first = result.first as Map;
+      final stamps = first['timestamp'];
+      final quote = _chain(first, ['indicators', 'quote']);
+      final closesRaw =
+          (quote is List && quote.isNotEmpty) ? quote.first['close'] : null;
+      if (stamps is! List || closesRaw is! List) return const [];
+      final closes = <double>[];
+      for (var i = 0; i < closesRaw.length && i < stamps.length; i++) {
+        final v = _toDouble(closesRaw[i]);
+        if (v != null && v > 0) closes.add(v);
+      }
+      if (closes.length < 2) return const [];
+      _histCache[symbol] = (closes: closes, at: DateTime.now());
+      return closes;
+    } catch (_) {
+      return const []; // offline, throttled, malformed - no line is fine
+    } finally {
+      if (ownsClient) c.close();
+    }
+  }
 
   Future<Quote?> _fetchUncached(
     String market,

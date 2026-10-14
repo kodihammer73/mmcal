@@ -15,8 +15,8 @@ Built with **Flutter** for **Android** and **iOS**.
 - Breakeven price calculation
 - Contra gain/loss calculation
 - Dark / Light / System theme toggle
-- AdMob banner ads
-- Forced update mechanism
+- AdMob banner ads (Android - the iOS build ships without ads)
+- Forced update mechanism (Android - the iOS build never blocks on a remote screen)
 - Per-market input persistence (reopens where you left off)
 - Last-used market restore on launch
 - Per-market flag emoji + accent color
@@ -25,7 +25,12 @@ Built with **Flutter** for **Android** and **iOS**.
 - Animated results entry with auto scroll-to-results
 - Portfolio tracking - add a trade from the results with `+`, grouped by market then settlement currency, with a per-currency net total (never converted across currencies), auto-averaged buy price, per-line and per-transaction editing, and JSON/CSV export + JSON import
 - Holdings show the **actual buy price** (a weighted average of the purchases still held, excluding costs) plus the **net total** as calculated on the main screen (brokerage, clearing fee and stamp duty included). Sells knock off the **oldest purchase first** (FIFO), so the remaining average reflects what is genuinely still held, and each purchase is tagged open or sold in the expanded row.
-- Last done prices - expanding a line (or "Refresh prices" in the menu) fetches the live price from Yahoo Finance with a Google Finance fallback, showing last price, day change, market value and unrealised P/L per line, plus per-currency Value/P/L totals. Cost totals stay cost-based and currencies are never converted.
+- Last done prices - expanding a line (or "Refresh prices" in the menu, or pull-to-refresh) fetches the live price from Yahoo Finance with a Google Finance fallback, showing last price, market value and unrealised P/L with P/L % per line, plus per-currency Value/P/L totals. Cost totals stay cost-based and currencies are never converted.
+- Sell what-if - inside an expanded holding, 25/50/75/100% chips estimate the net proceeds and realised P/L for selling a slice at the last reference price, using the market's real fee engine (estimate only, nothing is saved)
+- 30-day sparkline in the expanded holding row
+- Search (code or name) and sort (market / value / P/L %) across the portfolio
+- Undo for line, transaction and clear-all deletions (6-second window)
+- Haptic feedback on Calculate, Save and refresh completion
 - Code / name suggestions while adding to the portfolio - a curated dictionary bundled offline, refreshed from the project website, with a Yahoo Finance fallback
 - Stock codes and names are always stored upper-cased, and matching ignores case, leading zeros (`700` = `0700`) and trailing dots (`RR.` = `RR`)
 

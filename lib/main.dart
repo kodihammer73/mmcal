@@ -25,7 +25,7 @@ void main() async {
   // which would prevent runApp() from ever being called (blank screen /
   // apparent crash on launch). Fire-and-forget so the UI renders immediately.
   // AdMobService.initialize() is idempotent and already guards against errors.
-  unawaited(AdMobService.initialize());
+  if (AdMobService.adsEnabled) unawaited(AdMobService.initialize());
   // Symbol dictionary: load the on-device copy first (bundled asset or the
   // last download) so lookups work offline immediately, then fetch the newest
   // published copy in the background. Fire-and-forget - launch never waits.
@@ -286,6 +286,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   /// Loads the AdMob banner ad in the background.
   Future<void> _loadBannerAd() async {
+    // iOS ships without ads - never initialise or load a banner there.
+    if (!AdMobService.adsEnabled) return;
     await AdMobService.initialize();
     final ad = BannerAd(
       adUnitId: AdMobService.bannerAdUnitIdAndroid,
@@ -438,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           // AdMob banner ad at the bottom of the screen.
           // The AdWidget must be given a fixed height (AdSize.banner = 50
           // logical pixels) or the platform view gets an infinite size.
-          if (_bannerLoaded && _bannerAd != null)
+          if (AdMobService.adsEnabled && _bannerLoaded && _bannerAd != null)
             Container(
               width: double.infinity,
               height: 50,

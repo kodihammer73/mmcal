@@ -103,8 +103,18 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ],
               ),
-              child: const Icon(Icons.calculate_outlined,
-                  size: 52, color: AppColors.primary),
+              child: ClipOval(
+                child: Image.asset(
+                  'MMCaltrans.png',
+                  width: 96,
+                  height: 96,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(
+                      Icons.calculate_outlined,
+                      size: 52,
+                      color: AppColors.primary),
+                ),
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
