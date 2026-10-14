@@ -4,6 +4,14 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- The Google Mobile Ads SDK aborts at launch unless this key exists and
+	     matches the expected format, even when the app never initialises it.
+	     The iOS build never initialises the SDK and never loads an ad
+	     (AdMobService.adsEnabled is Android-only), so Google's published
+	     universal TEST app id is used here - this keeps our real AdMob
+	     publisher id out of the App Store binary. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-394025609992544~1458002511</string>
 	<key>CFBundleDevelopmentRegion</key>
 
 	<string>$(DEVELOPMENT_LANGUAGE)</string>

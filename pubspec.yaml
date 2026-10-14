@@ -1,7 +1,7 @@
 name: flutter_mmcal
 description: Multi Market Calculator - stock trading cost calculator and manual portfolio log for 11 markets. Records trades the user enters; cannot place orders.
 publish_to: 'none'
-version: 1.1.0+9
+version: 1.1.1+10
 
 
 
