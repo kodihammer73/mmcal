@@ -47,7 +47,10 @@ jobs:
         run: cd app_android && flutter analyze
 
       # Debug APK: proves the Android app (including the AdMob plugin) compiles
-      # and links. The signed release App Bundle is built locally, where the
-      # release keystore lives (see README).
+      # and links. arm64 only and split-per-abi keep this quick; the signed
+      # release App Bundle is built locally, where the release keystore lives
+      # (see README).
       - name: Build debug APK
-        run: cd app_android && flutter build apk --debug
+        run: |
+          cd app_android
+          flutter build apk --debug --target-platform android-arm64 --split-per-abi
