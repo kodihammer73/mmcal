@@ -101,19 +101,25 @@ flutter build ios --release
 # Output: build/ios/iphoneos/Runner.app
 ```
 
-> **Note:** iOS builds require a Mac with Xcode. This repo includes a **GitHub Actions workflow** (`.github/workflows/ios.yml`) that builds the iOS app automatically on every push to `main` using a macOS runner. The build is unsigned (`--no-codesign`); download the artifact from the Actions tab.
+> **Note:** iOS builds require a Mac with Xcode, so they run in a **GitHub Actions workflow** (`.github/workflows/ios.yml`) on a macOS runner. On a `v*` tag it signs the build and uploads it to App Store Connect.
+>
+> **Android is built locally on the PC and is deliberately NOT in CI** (the release keystore and `key.properties` are not in the repo). A tag push therefore starts exactly one workflow. See the release checklist in `memory-bank/mobile-app-guide.md`.
 
 ## GitHub Actions CI
-Two workflows, both triggered by `v*` tags, pull requests to `main`, and
-manual dispatch:
+One workflow - `.github/workflows/ios.yml` (macOS) - triggered by `v*` tags,
+pull requests to `main`, and manual dispatch:
 
-- `.github/workflows/ios.yml` (macOS) - analyzes and tests
-  `packages/mmcal_core`, analyzes `app_ios`, builds the app
-  (`flutter build ios --release --no-codesign`), and on a `v*` tag signs it,
-  uploads to App Store Connect and attaches the IPA to a GitHub release.
-- `.github/workflows/android.yml` (Linux) - analyzes and tests
-  `packages/mmcal_core`, analyzes `app_android`, and builds a debug APK. The
-  signed release App Bundle is built locally, where the release keystore lives.
+1. analyzes and tests `packages/mmcal_core` (`flutter pub get`, `flutter analyze`,
+   `flutter test`),
+2. analyzes `app_ios`,
+3. builds the app (`flutter build ios --release --no-codesign`),
+4. on a `v*` tag: imports the signing cert + profile, signs the IPA, uploads it
+   to App Store Connect and attaches it to a GitHub release.
+
+> **There is deliberately NO Android CI.** Android is built on the developer's
+> PC (`cd app_android && flutter build appbundle --release`) because the release
+> keystore / `key.properties` are not committed. A tag push starts exactly one
+> workflow (iOS).
 
 ## Testing
 Run the suite in the shared package - that is where the code and the tests
