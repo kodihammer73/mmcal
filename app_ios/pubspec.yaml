@@ -1,0 +1,24 @@
+name: mmcal_ios
+description: >-
+  MMCal for iOS - multi-market brokerage fee calculator and manual portfolio
+  log. This app deliberately has NO advertising dependency: no ad SDK is
+  linked into the binary, so no ad code can run or crash it.
+publish_to: 'none'
+version: 1.2.0+11
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mmcal_core:
+    path: ../packages/mmcal_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

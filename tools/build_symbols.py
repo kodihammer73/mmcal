@@ -84,7 +84,7 @@ SCHEMA_VERSION = 1
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-ASSETS = os.path.join(ROOT, 'assets')
+ASSETS = os.path.join(ROOT, 'packages', 'mmcal_core', 'assets')
 OUT_PATH = os.path.join(ASSETS, 'mmcal_symbols.json')
 
 

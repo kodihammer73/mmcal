@@ -1,0 +1,434 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'config/settings.dart';
+import 'markets/market_registry.dart';
+import 'screens/market_screen.dart';
+import 'screens/portfolio_screen.dart';
+import 'screens/settings_screen.dart';
+import 'screens/splash_screen.dart';
+import 'screens/update_required_screen.dart';
+import 'services/form_state.dart';
+import 'services/symbol_lookup.dart';
+import 'services/update_check.dart';
+import 'ui/branding.dart';
+
+/// Supplies the advertising slot rendered under the market tabs.
+///
+/// Defined here as a plain typedef so this shared library never imports an ad
+/// SDK: the Android app passes an AdMob banner builder, the iOS app passes
+/// nothing (and therefore links no ad SDK at all).
+typedef BannerBuilder = Widget Function(BuildContext context);
+
+/// Runs the shared MMCal app.
+///
+/// [onStartup] runs fire-and-forget once settings are loaded - the Android app
+/// uses it to initialise AdMob, and it must never block launch. [bannerBuilder]
+/// supplies the ad slot; omit it and the app simply has no advertising.
+Future<void> runMmCalApp({
+  BannerBuilder? bannerBuilder,
+  Future<void> Function()? onStartup,
+}) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SettingsManager.init();
+  if (onStartup != null) unawaited(onStartup());
+  // Symbol dictionary: load the on-device copy first (bundled asset or the
+  // last download) so lookups work offline immediately, then fetch the newest
+  // published copy in the background. Fire-and-forget - launch never waits.
+  unawaited(SymbolLookup.instance().then((_) => SymbolLookup.refresh()));
+  runApp(MMCalApp(bannerBuilder: bannerBuilder));
+}
+
+/// Brand palette used across the app.
+class AppColors {
+  AppColors._();
+
+  // Primary blue / indigo identity
+  static const Color primary = Color(0xFF1E3A8A); // deep indigo
+  static const Color accent = Color(0xFF2563EB); // vivid blue
+  static const Color accentLight = Color(0xFF60A5FA);
+  static const Color darkPrimary = Color(0xFF0D2A66);
+
+  // Gradient for the app bar
+  static const List<Color> appBarGradient = [Color(0xFF1E3A8A), Color(0xFF2563EB)];
+  static const List<Color> appBarGradientDark = [Color(0xFF0D2A66), Color(0xFF1E3A8A)];
+
+  // Buy / Sell accents (light mode)
+  static const Color buyLight = Color(0xFF15803D);
+  static const Color sellLight = Color(0xFFB91C1C);
+  static const Color totalLight = Color(0xFF1D4ED8);
+
+  // Buy / Sell accents (dark mode)
+  static const Color buyDark = Color(0xFF4ADE80);
+  static const Color sellDark = Color(0xFFF87171);
+  static const Color totalDark = Color(0xFF93C5FD);
+}
+
+/// App-bar styling shared by every pushed screen (Settings, Portfolio).
+///
+/// Kept top-level so it can be unit tested. The background MUST be opaque: the
+/// foreground - and therefore the back arrow - is white, so a transparent bar
+/// over the near-white scaffold makes the arrow invisible in light mode. (The
+/// Home screen draws its own gradient header and does not use an AppBar.)
+AppBarTheme buildAppBarTheme(Brightness brightness) => AppBarTheme(
+      backgroundColor:
+          brightness == Brightness.dark ? AppColors.darkPrimary : AppColors.primary,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      centerTitle: false,
+      titleTextStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+
+class MMCalApp extends StatefulWidget {
+  /// Extra UI pinned under the market tabs (the Android AdMob banner). Null on
+  /// iOS, which ships without advertising.
+  final BannerBuilder? bannerBuilder;
+
+  const MMCalApp({super.key, this.bannerBuilder});
+
+  @override
+  State<MMCalApp> createState() => _MMCalAppState();
+}
+
+class _MMCalAppState extends State<MMCalApp> {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  /// Holds the update-check result. Null while the check is in progress.
+  UpdateCheckResult? _updateResult;
+
+  // Whether the branded splash is still showing. Flipped to false after a
+  // short delay so the splash fades into the real UI.
+  bool _showSplash = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForUpdate();
+  }
+
+  /// Reads the installed version and checks the remote config for a forced
+  /// update. If one is required, [home] is replaced by the blocking
+  /// [UpdateRequiredScreen].
+  Future<void> _checkForUpdate() async {
+    final info = await PackageInfo.fromPlatform();
+    final result = await UpdateChecker.checkForUpdate(
+      installedVersion: info.version,
+    );
+    if (mounted) {
+      setState(() => _updateResult = result);
+    }
+  }
+
+  void _cycleThemeMode() {
+    setState(() {
+      _themeMode = switch (_themeMode) {
+        ThemeMode.system => ThemeMode.light,
+        ThemeMode.light => ThemeMode.dark,
+        ThemeMode.dark => ThemeMode.system,
+      };
+    });
+  }
+
+  ThemeData _buildTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final scheme = ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: brightness,
+      primary: isDark ? AppColors.accentLight : AppColors.primary,
+    );
+
+    return ThemeData(
+      colorScheme: scheme,
+      useMaterial3: true,
+      scaffoldBackgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+      appBarTheme: buildAppBarTheme(brightness),
+
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            width: 1,
+          ),
+        ),
+        margin: EdgeInsets.zero,
+      ),
+      chipTheme: ChipThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+        showCheckmark: false,
+        labelStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+        selectedColor: scheme.primary,
+        backgroundColor: scheme.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
+        ),
+        isDense: true,
+        labelStyle: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      dividerTheme: DividerThemeData(
+        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+        thickness: 1,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'MMCal',
+      debugShowCheckedModeBanner: false,
+      themeMode: _themeMode,
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
+      home: _showSplash
+          ? SplashScreen(
+              onFinished: () {
+                if (mounted) setState(() => _showSplash = false);
+              },
+            )
+          : _updateResult?.updateRequired == true
+              ? UpdateRequiredScreen(result: _updateResult!)
+              : HomeScreen(
+                  themeMode: _themeMode,
+                  onCycleThemeMode: _cycleThemeMode,
+                  bannerBuilder: widget.bannerBuilder,
+                ),
+    );
+  }
+}
+
+class HomeScreen extends StatefulWidget {
+  final ThemeMode themeMode;
+  final VoidCallback onCycleThemeMode;
+  final BannerBuilder? bannerBuilder;
+  const HomeScreen({
+    super.key,
+    required this.themeMode,
+    required this.onCycleThemeMode,
+    this.bannerBuilder,
+  });
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  late final List markets;
+
+  @override
+  void initState() {
+    super.initState();
+    markets = getAllMarkets(SettingsManager.instance);
+    _tabController = TabController(length: markets.length, vsync: this);
+    _restoreLastMarket();
+    _tabController.addListener(_onTabChanged);
+  }
+
+  /// Reopens the app on the market the user was last viewing.
+  Future<void> _restoreLastMarket() async {
+    final idx = await FormStateStore.loadLastMarket();
+    if (!mounted) return;
+    if (idx == null || idx < 0 || idx >= markets.length) return;
+
+    // Defer the index change until AFTER the tab bar has laid out. Setting
+    // TabController.index right after an await can race with the first frame:
+    // the horizontal TabBar's ScrollPosition may not have clients / a real
+    // viewport yet, and jumping the index then throws "Null check operator
+    // used on a null value" inside _tabCenteredScrollOffset. Running it post-
+    // frame guarantees the scrollable exists and has dimensions.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_tabController.indexIsChanging && _tabController.index == idx) {
+        setState(() {});
+        return;
+      }
+      _tabController.index = idx;
+      setState(() {});
+    });
+  }
+
+  void _onTabChanged() {
+    if (!mounted) return;
+    if (!_tabController.indexIsChanging) {
+      FormStateStore.saveLastMarket(_tabController.index);
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gradient = isDark ? AppColors.appBarGradientDark : AppColors.appBarGradient;
+
+    return Scaffold(
+      body: Column(
+        children: [
+          // ── Gradient AppBar with rounded bottom ─────────────
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: gradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+                    child: Row(
+                      children: [
+                        Image.asset(
+                          'packages/mmcal_core/assets/MMCaltrans.png',
+                          width: 26,
+                          height: 26,
+                          cacheWidth: 96,
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.calculate, color: Colors.white, size: 26),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'MultiMarket Trade Calculator',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                '${marketFlag(markets[_tabController.index].name)} ${markets[_tabController.index].name}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        IconButton(
+                          icon: const Icon(Icons.business_center,
+                              color: Colors.white),
+                          tooltip: 'Portfolio log (record of your own trades)',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const PortfolioScreen()),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            switch (widget.themeMode) {
+                              ThemeMode.system => Icons.brightness_auto,
+                              ThemeMode.light => Icons.light_mode,
+                              ThemeMode.dark => Icons.dark_mode,
+                            },
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Theme: ${widget.themeMode.name}',
+                          onPressed: widget.onCycleThemeMode,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.settings, color: Colors.white),
+                          tooltip: 'Settings',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white70,
+                    indicatorColor: Colors.amber,
+                    indicatorWeight: 3,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    tabs: markets.map<Widget>((m) => Tab(text: '${marketFlag(m.name)} ${marketCode(m.name)}')).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // ── Body ────────────────────────────────────────────
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: markets.map<Widget>((m) => MarketScreen(market: m)).toList(),
+            ),
+          ),
+          // Advertising slot, supplied by the host app (Android's AdMob
+          // banner). Omitted entirely on iOS.
+          if (widget.bannerBuilder != null) widget.bannerBuilder!(context),
+        ],
+      ),
+    );
+  }
+}

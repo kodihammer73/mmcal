@@ -1,0 +1,53 @@
+name: Android Build
+
+on:
+  # Same trigger policy as the iOS workflow: release builds run on version
+  # tags, pull requests are validated, and a manual dispatch is always
+  # available. A plain push to main does not start a build.
+  push:
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Analyze & build Android app
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # The shared library (packages/mmcal_core) holds all the code and the
+      # tests. The Android app is a thin shell that adds the AdMob banner.
+      - name: Analyze & test shared core
+        working-directory: packages/mmcal_core
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Install Android app dependencies
+        run: cd app_android && flutter pub get
+
+      - name: Analyze Android app
+        run: cd app_android && flutter analyze
+
+      # Debug APK: proves the Android app (including the AdMob plugin) compiles
+      # and links. The signed release App Bundle is built locally, where the
+      # release keystore lives (see README).
+      - name: Build debug APK
+        run: cd app_android && flutter build apk --debug

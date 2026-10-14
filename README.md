@@ -38,7 +38,7 @@ Built with **Flutter** for **Android** and **iOS**.
 - Flutter (Dart 3.x)
 - `shared_preferences` — settings & per-market form persistence
 - `intl` — number formatting
-- `google_mobile_ads` — AdMob banner ads
+- `google_mobile_ads` — AdMob banner ads (**Android app only**; the iOS app has no advertising dependency, so no ad SDK is linked into the App Store binary)
 - `share_plus` — share results summary + portfolio export
 - `package_info_plus` — app version
 - `file_selector` — pick a portfolio JSON file to import
@@ -47,42 +47,36 @@ Built with **Flutter** for **Android** and **iOS**.
 - `assets/mmcal_symbols.json` — bundled symbol dictionary (~41,000 symbols across all 11 markets), generated from the per-market CSVs in `assets/` by `tools/build_symbols.py`
 
 ## Project Structure
+
+The repo is a small monorepo: one shared library holds all the code, and two
+thin app shells provide the platform entry points. **The iOS shell has no
+advertising dependency at all**, which is what keeps the Google Mobile Ads SDK
+out of the App Store binary.
+
 ```
-lib/
-├── main.dart                      # App entry, MaterialApp + TabBar (11 tabs)
-├── config/
-│   └── settings.dart              # kDefaultSettings (118 items), SettingsManager
-├── engine/
-│   └── engine.dart                # Market abstract, ForeignMarket base, rounding helpers
-├── markets/
-│   ├── malaysia.dart              # MalaysiaMarket (custom calculate + DF A/C)
-│   ├── singapore.dart             # SingaporeMarket (HKD settlement support)
-│   ├── hongkong.dart              # HongKongMarket (CCASS, levy, foreign stamp duty)
-│   ├── united_states.dart         # UnitedStatesMarket (SEC fee, USD min brokerage)
-│   ├── simple_markets.dart        # Thailand, Indonesia, UK, Australia, Japan, Canada, Germany
-│   └── market_registry.dart       # getAllMarkets() factory
-├── screens/
-│   ├── market_screen.dart         # Per-market tab: buy/sell inputs, chips, results
-│   ├── portfolio_screen.dart      # Holdings grouped by market then currency
-│   ├── add_portfolio_sheet.dart   # Add / edit a portfolio transaction sheet
-│   ├── settings_screen.dart       # Expandable settings by market group
-│   └── update_required_screen.dart # Blocking forced-update screen
-├── services/
-│   ├── admob_service.dart         # AdMob banner ad service
-│   ├── form_state.dart            # Per-market input persistence + last market
-│   ├── portfolio_store.dart       # Portfolio ledger + position aggregation
-│   ├── portfolio_codec.dart       # Portfolio JSON/CSV encode + import decode
-│   ├── portfolio_transfer.dart    # Portfolio export share / import file pick
-│   ├── symbol_lookup.dart         # Code <-> name dictionary + Yahoo fallback
-│   ├── quote_service.dart         # Last-done prices: Yahoo chart -> search -> Google Finance
-│   └── update_check.dart          # Forced update checker
-└── ui/
-    ├── branding.dart              # Per-market flag emoji + accent colors
-    ├── stock_identifier_field.dart # One code-or-name box + dictionary suggestions
-    └── input_formatters.dart      # Upper-case formatter for stock code/name
-assets/
-├── ListOfSecurities<Market>.csv   # Source of truth: one exchange export per market
-└── mmcal_symbols.json             # Generated dictionary (do not hand-edit)
+packages/mmcal_core/               # shared library - ALL app code, no advertising
+├── lib/
+│   ├── mmcal_core.dart            # barrel export used by the app shells
+│   ├── mmcal_app.dart             # App entry: MaterialApp + TabBar (11 tabs), runMmCalApp()
+│   ├── config/settings.dart       # kDefaultSettings (118 items), SettingsManager
+│   ├── engine/engine.dart         # Market abstract, ForeignMarket base, rounding helpers
+│   ├── markets/                   # Malaysia, Singapore, Hong Kong, US + simple markets
+│   ├── screens/                   # market tab, portfolio log, add sheet, settings, splash
+│   ├── services/                  # form state, portfolio store/codec/transfer, symbols, quotes, update check
+│   └── ui/                        # branding, stock identifier field, formatters, sparkline
+├── assets/
+│   ├── ListOfSecurities<Market>.csv  # Source of truth: one exchange export per market
+│   ├── mmcal_symbols.json            # Generated dictionary (do not hand-edit)
+│   └── MMCaltrans.png                # Logo used by the splash + header
+└── test/                          # the whole test suite
+app_android/                       # thin Android shell: mmcal_core + google_mobile_ads
+├── lib/main.dart                  # runMmCalApp(onStartup: ..., bannerBuilder: ...)
+├── lib/services/admob_service.dart
+├── lib/widgets/admob_banner.dart
+└── android/                       # Gradle project (com.mmcal.app)
+app_ios/                           # thin iOS shell: mmcal_core ONLY - no ad SDK
+├── lib/main.dart                  # runMmCalApp()
+└── ios/                           # Xcode project (com.mmcal.app)
 tools/
 ├── build_symbols.py               # assets/*.csv -> assets/mmcal_symbols.json
 └── verify_symbols.py              # Checks each row against Yahoo Finance
@@ -90,14 +84,19 @@ tools/
 
 ## Building
 
-### Android
+### Android (from `app_android/`)
 ```bash
-flutter build apk --release
-# Output: build/app/outputs/flutter-apk/app-release.apk
+cd app_android
+flutter build appbundle --release
+# Output: build/app/outputs/bundle/release/app-release.aab
 ```
+The release build is signed with `app_android/android/key.properties` +
+`app_android/android/app/mmcal-release.jks`; neither is committed (see
+`.gitignore`).
 
-### iOS (requires macOS + Xcode)
+### iOS (requires macOS + Xcode; from `app_ios/`)
 ```bash
+cd app_ios
 flutter build ios --release
 # Output: build/ios/iphoneos/Runner.app
 ```
@@ -105,17 +104,25 @@ flutter build ios --release
 > **Note:** iOS builds require a Mac with Xcode. This repo includes a **GitHub Actions workflow** (`.github/workflows/ios.yml`) that builds the iOS app automatically on every push to `main` using a macOS runner. The build is unsigned (`--no-codesign`); download the artifact from the Actions tab.
 
 ## GitHub Actions CI
-The `.github/workflows/ios.yml` workflow runs on every push to `main`:
-1. Sets up Flutter on a macOS runner
-2. Runs `flutter analyze` and `flutter test`
-3. Builds the iOS app (`flutter build ios --release --no-codesign`)
-4. Uploads `Runner.app` as a downloadable artifact
+Two workflows, both triggered by `v*` tags, pull requests to `main`, and
+manual dispatch:
+
+- `.github/workflows/ios.yml` (macOS) - analyzes and tests
+  `packages/mmcal_core`, analyzes `app_ios`, builds the app
+  (`flutter build ios --release --no-codesign`), and on a `v*` tag signs it,
+  uploads to App Store Connect and attaches the IPA to a GitHub release.
+- `.github/workflows/android.yml` (Linux) - analyzes and tests
+  `packages/mmcal_core`, analyzes `app_android`, and builds a debug APK. The
+  signed release App Bundle is built locally, where the release keystore lives.
 
 ## Testing
+Run the suite in the shared package - that is where the code and the tests
+live:
 ```bash
+cd packages/mmcal_core
 flutter test
 ```
-145 tests pass (engine parity tests mirroring the Python desktop test suites, plus unit/widget tests for the portfolio, the symbol dictionary and the UI features).
+179 tests pass (engine parity tests mirroring the Python desktop test suites, plus unit/widget tests for the portfolio, the symbol dictionary and the UI features).
 
 ## Symbol dictionary
 

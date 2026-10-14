@@ -1,0 +1,24 @@
+name: mmcal_android
+description: >-
+  MMCal for Android - multi-market brokerage fee calculator and manual
+  portfolio log, with the AdMob banner.
+publish_to: 'none'
+version: 1.2.0+11
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mmcal_core:
+    path: ../packages/mmcal_core
+  google_mobile_ads: ^9.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,34 @@
+name: mmcal_core
+description: >-
+  MMCal shared library - the 11-market brokerage fee calculator, manual
+  portfolio log, screens, engine and services. Contains no advertising
+  dependency, so the iOS app links no ad SDK at all; the Android app adds one.
+publish_to: 'none'
+version: 1.2.0+11
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.2.3
+  intl: ^0.19.0
+  cupertino_icons: ^1.0.8
+  package_info_plus: ^8.0.0
+  http: ^1.2.0
+  url_launcher: ^6.2.5
+  share_plus: ^12.0.0
+  path_provider: ^2.1.4
+  file_selector: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/MMCaltrans.png
+    - assets/mmcal_symbols.json

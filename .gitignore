@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Flutter build output in any package or nested platform folder
+**/build/
+
 # Symbolication related
 app.*.symbols
 
@@ -40,15 +43,14 @@ app.*.symbols
 app.*.map.json
 
 # Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+/app_android/android/app/debug
+/app_android/android/app/profile
+/app_android/android/app/release
 
 # Release signing keystore and credentials (NEVER commit these!)
-/android/key.properties
-/android/app/*.jks
-/android/app/*.keystore
+/app_android/android/key.properties
+/app_android/android/app/*.jks
+/app_android/android/app/*.keystore
 
-
-android/.kotlin/
+app_android/android/.kotlin/
 

@@ -51,7 +51,7 @@ USER_AGENT = 'Mozilla/5.0'
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-JSON_PATH = os.path.join(ROOT, 'assets', 'mmcal_symbols.json')
+JSON_PATH = os.path.join(ROOT, 'packages', 'mmcal_core', 'assets', 'mmcal_symbols.json')
 FIXED_PATH = os.path.join(HERE, 'mmcal_symbols.suggested.json')
 
 OK, NAME, MISSING, ERROR = 'OK', 'NAME?', 'MISSING', 'ERROR'

@@ -30,23 +30,31 @@ jobs:
       - name: Enable Flutter iOS support
         run: flutter config --enable-ios
 
-      - name: Install dependencies
-        run: flutter pub get
+      # The shared library (packages/mmcal_core) holds all the code; the app
+      # folders are thin shells. app_ios deliberately has NO advertising
+      # dependency, so the Google Mobile Ads SDK is never linked into the IPA.
+      - name: Analyze & test shared core
+        working-directory: packages/mmcal_core
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
 
-      - name: Analyze code
-        run: flutter analyze
+      - name: Install iOS app dependencies
+        run: cd app_ios && flutter pub get
 
-      - name: Run tests
-        run: flutter test
+      - name: Analyze iOS app
+        run: cd app_ios && flutter analyze
 
       - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign
+        run: cd app_ios && flutter build ios --release --no-codesign
 
       - name: Package unsigned .ipa
         run: |
+          cd app_ios
           mkdir -p Payload
           cp -R build/ios/iphoneos/Runner.app Payload/
-          zip -r mmcal-ios.ipa Payload
+          zip -r ../mmcal-ios.ipa Payload
           rm -rf Payload
 
       - name: Upload unsigned iOS .ipa artifact
@@ -94,7 +102,7 @@ jobs:
           APPLE_DIST_PROFILE: ${{ secrets.APPLE_DIST_PROFILE }}
         run: |
           set -euo pipefail
-          cd build/ios/iphoneos
+          cd app_ios/build/ios/iphoneos
           APP="Runner.app"
           # Resolve the codesigning identity (its SHA-1 hash) installed from the
           # .p12 secret. Works for both the current "Apple Distribution:" and
